@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="my-web-mvc" target="8" />
+      <module name="user-platform" target="8" />
+      <module name="user-web" target="8" />
+    </bytecodeTargetLevel>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="my-web-mvc" options="-proc:none -parameters" />
+      <module name="user-web" options="-proc:none -parameters" />
+    </option>
+  </component>
+</project>
