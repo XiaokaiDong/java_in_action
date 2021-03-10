@@ -98,7 +98,7 @@ public class FrontControllerServlet extends HttpServlet {
                 //利用反射调用方法ComponentContext#getComponent
                 Class<?> componentContextClass = componentContext.getClass();
                 Method[] componentContextPublicMethods = componentContextClass.getMethods();
-                // 处理方法支持的 HTTP 方法集合
+                // 利用getComponent注入@Resource属性
                 for (Method method : componentContextPublicMethods) {
                     if (method.getName().equals("getComponent")) {
                         try {
