@@ -5,6 +5,7 @@ import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigValue;
 import org.eclipse.microprofile.config.spi.ConfigSource;
 import org.eclipse.microprofile.config.spi.Converter;
+import org.geektimes.config.converter.MyAbstractTypeConverter;
 
 import java.util.*;
 
@@ -14,6 +15,8 @@ public class JavaConfig implements Config {
      * 内部可变的集合，不要直接暴露在外面
      */
     private List<ConfigSource> configSources = new LinkedList<>();
+
+    private MyAbstractTypeConverter typeConverter;
 
     private static Comparator<ConfigSource> configSourceComparator = new Comparator<ConfigSource>() {
         @Override
@@ -34,7 +37,7 @@ public class JavaConfig implements Config {
     public <T> T getValue(String propertyName, Class<T> propertyType) {
         String propertyValue = getPropertyValue(propertyName);
         // String 转换成目标类型
-        return getConverter(propertyType).get().convert(propertyValue);
+        return null;
     }
 
     @Override
@@ -71,7 +74,7 @@ public class JavaConfig implements Config {
 
     @Override
     public <T> Optional<Converter<T>> getConverter(Class<T> forType) {
-        return Optional.of(new MySimpleTypeConverter<T>());
+        return Optional.empty();
     }
 
     @Override

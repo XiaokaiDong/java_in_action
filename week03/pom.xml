@@ -13,6 +13,7 @@
     <modules>
         <module>my-web-mvc</module>
         <module>user-web</module>
+        
     </modules>
 
     <properties>

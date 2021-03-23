@@ -169,20 +169,28 @@
 
 ##作业内容3
 
-> 扩展 org.eclipse.microprofile.config.spi.Converter 实现，提供 String 类型到简单类型
+> 实现 org.eclipse.microprofile.config.spi.Converter 实现，提供 String 类型到简单类型的转换
 
-- 借鉴了spring的类型转换
-
-  使用MySimpleTypeConverter实现org.eclipse.microprofile.config.spi.Converter接口
+- 使用MyAbstractTypeConverter实现org.eclipse.microprofile.config.spi.Converter接口
 
   ```java
     /**
      * 类型转换类，将String转换为基本类型的包装类
     * @param <T> 目标类型
     */
-    public class MySimpleTypeConverter<T> implements Converter<T> {
+    public abstract class MyAbstractTypeConverter<T> implements Converter<T> {
 
-        private Map<Class<?>, ThrowableFunction<String, Object>> converterMap = new HashMap<>();
+        private final static Map<Class<?>, ThrowableFunction<String, Object>> converterMap = new HashMap<>();
+
+        static {
+            converterMap.putIfAbsent(Boolean.class, Boolean::parseBoolean);
+            converterMap.putIfAbsent(Byte.class, Byte::parseByte);
+            converterMap.putIfAbsent(Double.class, Double::valueOf);
+            converterMap.putIfAbsent(Float.class, Float::valueOf);
+            converterMap.putIfAbsent(Integer.class, Integer::valueOf);
+            converterMap.putIfAbsent(Long.class, Long::valueOf);
+            converterMap.putIfAbsent(Short.class, Short::valueOf);
+        }
 
         /**
         * 将基本包装类型的工厂方法放入一个Map
@@ -195,162 +203,113 @@
         * Long,
         * Short
         */
-        public MySimpleTypeConverter() {
-            converterMap.putIfAbsent(Boolean.class, Boolean::parseBoolean);
-            converterMap.putIfAbsent(Byte.class, Byte::parseByte);
-            converterMap.putIfAbsent(Double.class, Double::valueOf);
-            converterMap.putIfAbsent(Float.class, Float::valueOf);
-            converterMap.putIfAbsent(Integer.class, Integer::valueOf);
-            converterMap.putIfAbsent(Long.class, Long::valueOf);
-            converterMap.putIfAbsent(Short.class, Short::valueOf);
+        public MyAbstractTypeConverter() {
+
         }
 
 
         @Override
         public T convert(String value) throws IllegalArgumentException, NullPointerException {
-            GenericUtil<T> genericUtil = new GenericUtil<T>(){};
-            return convert(value, genericUtil.getType());
+            if (value == null) {
+                throw new NullPointerException("The value must not be null!");
+            }
+            return doConvert(value);
         }
 
-        public T convert(String value, Class<T> targetType) throws IllegalArgumentException, NullPointerException {
-            return (T)convertHelper(value, MyTypeDescriptor.valueOf(targetType));
+        protected abstract T doConvert(String value);
+
+        private void assertConverter(Converter<?> converter) {
+            Class<?> converterClass = converter.getClass();
+            if (converterClass.isInterface()) {
+                throw new IllegalArgumentException("The implementation class of Converter must not be an interface!");
+            }
+            if (Modifier.isAbstract(converterClass.getModifiers())) {
+                throw new IllegalArgumentException("The implementation class of Converter must not be abstract!");
+            }
         }
 
-        public Object convertHelper(String value, MyTypeDescriptor targetType) {
-            Object result = null;
-            ThrowableFunction<String, Object> converter = converterMap.get(targetType.getType());
-            if (converter == null) {
-                throw new IllegalArgumentException("不支持的额类型");
+        private Class<?> resolveConvertedType(Type type) {
+            Class<?> convertedType = null;
+            if (type instanceof ParameterizedType) {
+                ParameterizedType pType = (ParameterizedType) type;
+                if (pType.getRawType() instanceof Class) {
+                    Class<?> rawType = (Class) pType.getRawType();
+                    if (Converter.class.isAssignableFrom(rawType)) {
+                        Type[] arguments = pType.getActualTypeArguments();
+                        if (arguments.length == 1 && arguments[0] instanceof Class) {
+                            convertedType = (Class) arguments[0];
+                        }
+                    }
+                }
             }
-            try {
-                result =  converter.apply(value);
-            } catch (Throwable throwable) {
-                throwable.printStackTrace();
+            return convertedType;
+        }
+
+        private Class<?> resolveConvertedType(Class<?> converterClass) {
+            Class<?> convertedType = null;
+
+            for (Type superInterface : converterClass.getGenericInterfaces()) {
+                convertedType = resolveConvertedType(superInterface);
+                if (convertedType != null) {
+                    break;
+                }
             }
 
-            return result;
+            return convertedType;
+        }
+
+        public Class<?> resolveConvertedType(Converter<?> converter) {
+            assertConverter(converter);
+            Class<?> convertedType = null;
+            Class<?> converterClass = converter.getClass();
+            while (converterClass != null) {
+                convertedType = resolveConvertedType(converterClass);
+                if (convertedType != null) {
+                    break;
+                }
+
+                Type superType = converterClass.getGenericSuperclass();
+                if (superType instanceof ParameterizedType) {
+                    convertedType = resolveConvertedType(superType);
+                }
+
+                if (convertedType != null) {
+                    break;
+                }
+                // recursively
+                converterClass = converterClass.getSuperclass();
+
+            }
+
+            return convertedType;
+        }
+
+        protected ThrowableFunction<String, Object> getConvertingFunc(Class<?> targetClass) {
+            if (converterMap.containsKey(targetClass))
+                return converterMap.get(targetClass);
+            else
+                return null;
         }
     }
   ```
 
-  - MySimpleTypeConverter用在JavaConfig#getConverter中
+  - 基于MyAbstractTypeConverter扩展几个具体的转换类，以ShortConverter举例
 
     ```java
-    @Override
-    public <T> Optional<Converter<T>> getConverter(Class<T> forType) {
-        return Optional.of(new MySimpleTypeConverter<T>());
-    }
+    public class ShortConverter extends MyAbstractTypeConverter<Short> {
 
-    //提供类型转换
-    @Override
-    public <T> T getValue(String propertyName, Class<T> propertyType) {
-        String propertyValue = getPropertyValue(propertyName);
-        // String 转换成目标类型
-        return getConverter(propertyType).get().convert(propertyValue);
+        @Override
+        protected Short doConvert(String value) {
+            ThrowableFunction<String, Object> converter = getConvertingFunc(resolveConvertedType(this));
+            try {
+                return (Short) converter.apply(value);
+            } catch (Throwable throwable) {
+                throw new IllegalArgumentException(throwable.getMessage());
+            }
+        }
     }
     ```
 
-- 不得不说JAVA相比PYTHON实在是啰嗦，为了获取类型需要绕一大圈。
-
-- 其中MyTypeDescriptor的定义如下，主要的作用是用来保存类型Class<?>
-
-  ```java
-  public  class MyTypeDescriptor implements Serializable {
-
-    private static final Map<Class<?>, MyTypeDescriptor> commonTypesCache = new HashMap<>(32);
-
-    private static final Class<?>[] CACHED_COMMON_TYPES = {
-            boolean.class, Boolean.class, byte.class, Byte.class, char.class, Character.class,
-            double.class, Double.class, float.class, Float.class, int.class, Integer.class,
-            long.class, Long.class, short.class, Short.class, String.class, Object.class};
-
-    static {
-        for (Class<?> preCachedClass : CACHED_COMMON_TYPES) {
-            commonTypesCache.put(preCachedClass, valueOf(preCachedClass));
-        }
-    }
-
-    private Class<?> type;
-    private final MyResolvableType resolvableType;
-
-
-    public MyTypeDescriptor(MyResolvableType resolvableType) {
-        this.resolvableType = resolvableType;
-        this.type = (type != null ? type : resolvableType.toClass());
-    }
-
-
-    public Class getType() {
-        return type;
-    }
-
-    public static MyTypeDescriptor valueOf( Class<?> type) {
-        if (type == null) {
-            type = Object.class;
-        }
-        MyTypeDescriptor desc = commonTypesCache.get(type);
-        return (desc != null ? desc : new MyTypeDescriptor(MyResolvableType.forClass(type)));
-    }
-  }
-  ```
-
-- MyResolvableType的实现如下，主要是用来封装原始类型
-
-  ```java
-  public class MyResolvableType {
-
-    private Class<?> resolved;
-
-    private final Type type;
-
-    public static MyResolvableType forClass( Class<?> clazz) {
-        return new MyResolvableType(clazz);
-    }
-
-    private MyResolvableType( Class<?> clazz) {
-        this.resolved = (clazz != null ? clazz : Object.class);
-        this.type = this.resolved;
-    }
-
-    public Class<?> toClass() {
-        return resolve(Object.class);
-    }
-
-    public Class<?> resolve(Class<?> fallback) {
-        return (this.resolved != null ? this.resolved : fallback);
-    }
-  }
-  ```
-
-- 获取泛型的类的工具类GenericUtil。JAVA的泛型相比C++好像若了很多呀，目前这个类还不能正常工作，希望老师可以指导一二
-
-  ```java
-  public abstract class GenericUtil<T> {
-    private Class<T> tClass;
-
-    GenericUtil() {
-
-        Type type = getClass().getGenericSuperclass();
-        Type trueType = ((ParameterizedType) type).getActualTypeArguments()[0];
-        //下面这句话会抛异常，不知道为啥
-        this.tClass = (Class<T>) trueType;
-    }
-
-    Class<T> getType(){
-        return tClass;
-    }
-  }
-  ```
-
-  - 使用时通过匿名子类来达到目的, 位于MySimpleTypeConverter
-
-  ```java
-    @Override
-    public T convert(String value) throws IllegalArgumentException, NullPointerException {
-        GenericUtil<T> genericUtil = new GenericUtil<T>(){};
-        return convert(value, genericUtil.getType());
-    }
-  ```
 
 ## 作业内容4
 
