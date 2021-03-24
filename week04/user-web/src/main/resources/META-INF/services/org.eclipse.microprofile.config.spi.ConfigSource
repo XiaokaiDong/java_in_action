@@ -1,0 +1,3 @@
+org.geektimes.config.source.JavaSystemPropertiesConfigSource
+org.geektimes.config.source.SystemEnvConfigSource
+org.geektimes.config.source.FileConfigSource
