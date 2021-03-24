@@ -22,7 +22,7 @@ public class DefaultConfigProviderResolver extends ConfigProviderResolver {
 
     @Override
     public Config getConfig(ClassLoader loader) {
-        return configsRepository.computeIfAbsent(loader, this::newConfig);
+        return configsRepository.computeIfAbsent(resolveClassLoader(loader), this::newConfig);
     }
 
     private ClassLoader resolveClassLoader(ClassLoader classLoader) {

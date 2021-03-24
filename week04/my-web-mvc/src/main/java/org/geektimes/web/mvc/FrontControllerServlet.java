@@ -105,7 +105,6 @@ public class FrontControllerServlet extends HttpServlet {
                 Resource resource = field.getAnnotation(Resource.class);
                 String resourceName = resource.name();
                 Object componentContext = getServletContext().getAttribute("org.geektimes.injection.context.ComponentContext");
-                Object tmp = ((ConfigProviderResolver) getServletContext().getAttribute(CONFIG_NAME)).getConfig();
                 //利用反射调用方法ComponentContext#getComponent
                 Class<?> componentContextClass = componentContext.getClass();
                 Method[] componentContextPublicMethods = componentContextClass.getMethods();
