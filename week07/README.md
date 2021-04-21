@@ -60,7 +60,9 @@ https://gitee.com/oauth/token?grant_type=refresh_token&refresh_token={refresh_to
 ```properties
 server.port=8080
 
+#在码云上新建三方引用时获得
 oauth.client.id=37eba7a7126c5e29.....
+#在码云上新建三方引用时获得
 oauth.client.secret=365ac1e46e69d....
 oauth.client.oauthUrl=https://gitee.com:443/oauth/authorize
 oauth.client.redirectUri=http://h5tf0hmt.xiaomy.net/oauth
