@@ -69,4 +69,4 @@ public class SecurityConfig {
 }
 ```
 
-上面方法中
+上面代码中生成的两个WebSecurityConfigurerAdapter配置类中都对HttpSecurity实例进行了配置。在5.2.2中HttpSecurity实例的生成是在生成org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration#webSecurityExpressionHandler的过程中作为依赖生成的。但似乎不止这一个，
