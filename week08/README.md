@@ -69,4 +69,119 @@ public class SecurityConfig {
 }
 ```
 
-上面代码中生成的两个WebSecurityConfigurerAdapter配置类中都对HttpSecurity实例进行了配置。在5.2.2中HttpSecurity实例的生成是在生成org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration#webSecurityExpressionHandler的过程中作为依赖生成的。但似乎不止这一个，
+上面代码中生成的两个WebSecurityConfigurerAdapter配置类中都对HttpSecurity实例进行了配置。在5.2.2中HttpSecurity实例的生成是在生成org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration#webSecurityExpressionHandler的过程中作为依赖生成的。但似乎不止这一个。
+
+### HttpSecurity对象的生成
+
+> 分析所用Spring Security的版本为5.2.2
+
+- 处理配置类org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration
+
+  - 加载Bean webSecurityExpressionHandler
+  ```java
+    @Bean
+	@DependsOn(AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
+	public SecurityExpressionHandler<FilterInvocation> webSecurityExpressionHandler() {
+		return webSecurity.getExpressionHandler();
+	}
+  ```
+
+  - 可以看出webSecurityExpressionHandler依赖于AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME，即名为springSecurityFilterChain的Bean，这个Bean也定义在WebSecurityConfiguration类中。
+
+  ```java
+    /**
+	 * Creates the Spring Security Filter Chain
+	 * @return the {@link Filter} that represents the security filter chain
+	 * @throws Exception
+	 */
+	@Bean(name = AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
+	public Filter springSecurityFilterChain() throws Exception {
+		boolean hasConfigurers = webSecurityConfigurers != null
+				&& !webSecurityConfigurers.isEmpty();
+		if (!hasConfigurers) {
+			WebSecurityConfigurerAdapter adapter = objectObjectPostProcessor
+					.postProcess(new WebSecurityConfigurerAdapter() {
+					});
+			webSecurity.apply(adapter);
+		}
+		return webSecurity.build();
+	}
+  ```
+
+  - 调试执行时hasConfigurers == true，所以直接执行webSecurity.build()，导致org.springframework.security.config.annotation.AbstractConfiguredSecurityBuilder#doBuild这个模板方法被执行，验证了小马哥在课上所讲的内容。
+
+  ```java
+    protected final O doBuild() throws Exception {
+		synchronized (configurers) {
+			buildState = BuildState.INITIALIZING;
+
+			beforeInit();
+			init();  // <------------------ 此方法导致HttpSecurity实例的构造
+
+			buildState = BuildState.CONFIGURING;
+
+			beforeConfigure();
+			configure();
+
+			buildState = BuildState.BUILDING;
+
+			O result = performBuild();
+
+			buildState = BuildState.BUILT;
+
+			return result;
+		}
+	}
+  ```
+
+  在org.springframework.security.config.annotation.AbstractConfiguredSecurityBuilder#init中，依次调用org.springframework.security.config.annotation.AbstractConfiguredSecurityBuilder#configurers中的SecurityConfigurer对当前对象即org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration#webSecurity进行配置。
+
+  进行这个配置的实际类是org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerSecurityConfiguration，它的init方法委托其父类即WebSecurityConfigurerAdapter进行。
+
+  那 `WebSecurityConfiguration#webSecurity` 是何时初始化的呢？同时，AbstractConfiguredSecurityBuilder#configurers中的SecurityConfigurer是何时添加的呢？
+
+- WebSecurityConfiguration#webSecurity的初始化
+
+  在WebSecurityConfiguration中搜索webSecurity，可以看到在 `WebSecurityConfiguration#setFilterChainProxySecurityConfigurer` 中对webSecurity进行了赋值。
+
+  ```java
+
+  ```
+
+- AbstractConfiguredSecurityBuilder#configurers中包含如下的SecurityConfigurer对象。他们都是被@Configuration标记的配置类。
+
+  - AuthorizationServerSecurityConfiguration，派生自WebSecurityConfigurerAdapter
+  - ResourceServerConfiguration（应用自定义的一个配置类），派生自WebSecurityConfigurerAdapter
+  - AuthenticationServerConfiguration（应用自定义的一个配置类），派生自WebSecurityConfiguration
+
+  AbstractConfiguredSecurityBuilder#configurers是被AbstractConfiguredSecurityBuilder#add插入的SecurityConfigurer对象，而这个add方法也被 `WebSecurityConfiguration#setFilterChainProxySecurityConfigurer` 调用。
+
+### WebSecurityConfiguration#setFilterChainProxySecurityConfigurer
+
+WebSecurityConfiguration#setFilterChainProxySecurityConfigurer被@Autowired注解，所以这个方法的调用是在创建配置类Bean WebSecurityConfiguration的过程中处理@Autowired依赖时调起的。
+
+> 此时的依赖注入方式为方法（参数）注入。
+
+两个参数：
+
+- ObjectPostProcessor<Object> objectPostProcessor
+- List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers
+
+    其中第二个参数被打上了一个@Value注解
+    ```java
+    @Value("#{@autowiredWebSecurityConfigurersIgnoreParents.getWebSecurityConfigurers()}")
+    ```
+
+    即webSecurityConfigurers是名为autowiredWebSecurityConfigurersIgnoreParents的Bean的getWebSecurityConfigurers方法生成的。这个Bean也是在autowiredWebSecurityConfigurersIgnoreParents这个配置类中配置的，具体就是使用依赖查找在BeanFactory中收集所有类型为WebSecurityConfigurer的Bean
+
+    ```java
+    public List<SecurityConfigurer<Filter, WebSecurity>> getWebSecurityConfigurers() {
+            List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers = new ArrayList<>();
+            Map<String, WebSecurityConfigurer> beansOfType = beanFactory
+                    .getBeansOfType(WebSecurityConfigurer.class);
+            for (Entry<String, WebSecurityConfigurer> entry : beansOfType.entrySet()) {
+                webSecurityConfigurers.add(entry.getValue());
+            }
+            return webSecurityConfigurers;
+        }
+    ```
