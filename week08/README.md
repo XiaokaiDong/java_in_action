@@ -69,17 +69,17 @@ public class SecurityConfig {
 }
 ```
 
-上面代码中生成的两个WebSecurityConfigurerAdapter配置类中都对HttpSecurity实例进行了配置。在5.2.2中HttpSecurity实例的生成是在生成org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration#webSecurityExpressionHandler的过程中作为依赖生成的。但似乎不止这一个。
+上面代码中生成的两个WebSecurityConfigurerAdapter配置类中都对HttpSecurity实例进行了配置。在5.2.2中HttpSecurity实例的生成是在生成WebSecurityConfiguration#webSecurityExpressionHandler的过程中作为依赖生成的。但似乎不止这一个。
 
 ### HttpSecurity对象的生成
 
 > 分析所用Spring Security的版本为5.2.2
 
-- 处理配置类org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration
+- 处理配置类WebSecurityConfiguration
 
   - 加载Bean webSecurityExpressionHandler
   ```java
-    @Bean
+  @Bean
 	@DependsOn(AbstractSecurityWebApplicationInitializer.DEFAULT_FILTER_NAME)
 	public SecurityExpressionHandler<FilterInvocation> webSecurityExpressionHandler() {
 		return webSecurity.getExpressionHandler();
@@ -108,7 +108,7 @@ public class SecurityConfig {
 	}
   ```
 
-  - 调试执行时hasConfigurers == true，所以直接执行webSecurity.build()，导致org.springframework.security.config.annotation.AbstractConfiguredSecurityBuilder#doBuild这个模板方法被执行，验证了小马哥在课上所讲的内容。
+  - 调试执行时hasConfigurers == true，所以直接执行webSecurity.build()，导致AbstractConfiguredSecurityBuilder#doBuild这个模板方法被执行，验证了小马哥在课上所讲的内容。
 
   ```java
     protected final O doBuild() throws Exception {
@@ -134,9 +134,9 @@ public class SecurityConfig {
 	}
   ```
 
-  在org.springframework.security.config.annotation.AbstractConfiguredSecurityBuilder#init中，依次调用org.springframework.security.config.annotation.AbstractConfiguredSecurityBuilder#configurers中的SecurityConfigurer对当前对象即org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration#webSecurity进行配置。
+  在AbstractConfiguredSecurityBuilder#init中，依次调用AbstractConfiguredSecurityBuilder#configurers中的SecurityConfigurer对当前对象即WebSecurityConfiguration#webSecurity进行配置。
 
-  进行这个配置的实际类是org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerSecurityConfiguration，它的init方法委托其父类即WebSecurityConfigurerAdapter进行。
+  进行这个配置的实际类是AuthorizationServerSecurityConfiguration，它的init方法委托其父类即WebSecurityConfigurerAdapter进行。
 
   那 `WebSecurityConfiguration#webSecurity` 是何时初始化的呢？同时，AbstractConfiguredSecurityBuilder#configurers中的SecurityConfigurer是何时添加的呢？
 
@@ -145,8 +145,28 @@ public class SecurityConfig {
   在WebSecurityConfiguration中搜索webSecurity，可以看到在 `WebSecurityConfiguration#setFilterChainProxySecurityConfigurer` 中对webSecurity进行了赋值。
 
   ```java
-
+  webSecurity = objectPostProcessor
+		  .postProcess(new WebSecurity(objectPostProcessor));
   ```
+
+  上面的代码直接new了一个WebSecurity，然后由ObjectPostProcessor进行后续处理，ObjectPostProcessor的注入参见下一小节，实际类型是AutowireBeanFactoryObjectPostProcessor。
+
+  #### AutowireBeanFactoryObjectPostProcessor的处理过程
+  
+  - BeanPostProcessor#postProcessBeforeInitialization
+    
+    - ApplicationContextAware将ApplicationContext注入WebSecurity实例
+
+  - AbstractAutowireCapableBeanFactory#invokeInitMethods
+    没有做任何处理
+
+  - BeanPostProcessor#postProcessAfterInitialization
+    没有做任何处理
+
+  - AbstractAutowireCapableBeanFactory#autowireBean
+
+    没有做任何处理
+    
 
 - AbstractConfiguredSecurityBuilder#configurers中包含如下的SecurityConfigurer对象。他们都是被@Configuration标记的配置类。
 
@@ -165,6 +185,46 @@ WebSecurityConfiguration#setFilterChainProxySecurityConfigurer被@Autowired注�
 两个参数：
 
 - ObjectPostProcessor<Object> objectPostProcessor
+
+  这个Bean是初始化配置类GlobalMethodSecurityConfiguration时进行方法注入时构建的，所对应的方法为
+
+  ```java
+  @Autowired(required = false)
+	public void setObjectPostProcessor(ObjectPostProcessor<Object> objectPostProcessor) {
+		this.objectPostProcessor = objectPostProcessor;
+		this.defaultMethodExpressionHandler = objectPostProcessor
+				.postProcess(defaultMethodExpressionHandler);
+	}
+  ```
+  
+  objectPostProcessor的构建在ObjectPostProcessorConfiguration中进行
+  ```java
+  @Configuration(proxyBeanMethods = false)
+  public class ObjectPostProcessorConfiguration {
+
+    @Bean
+    public ObjectPostProcessor<Object> objectPostProcessor(
+        AutowireCapableBeanFactory beanFactory) {
+      return new AutowireBeanFactoryObjectPostProcessor(beanFactory);
+    }
+  }
+  ```
+
+  - GlobalMethodSecurityConfiguration是由GlobalMethodSecuritySelector引入的，看到ImportSelector的实现类，就知道是由某个@Enable***驱动的
+
+  ```java
+  @Retention(value = java.lang.annotation.RetentionPolicy.RUNTIME)
+  @Target(value = { java.lang.annotation.ElementType.TYPE })
+  @Documented
+  @Import({ GlobalMethodSecuritySelector.class })
+  @EnableGlobalAuthentication
+  @Configuration
+  public @interface EnableGlobalMethodSecurity {
+    //...
+  }
+  ```
+
+
 - List<SecurityConfigurer<Filter, WebSecurity>> webSecurityConfigurers
 
     其中第二个参数被打上了一个@Value注解
