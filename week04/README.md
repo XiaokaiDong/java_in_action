@@ -5,7 +5,7 @@
 
 
 > 完善 my dependency-injection 模块
->  脱离 web.xml 配置实现 ComponentContext 自动初始
+> 脱离 web.xml 配置实现 ComponentContext 自动初始
 
 
 - 新建模块my-dependency-injection
