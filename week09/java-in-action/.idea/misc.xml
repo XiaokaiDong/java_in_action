@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="FrameworkDetectionExcludesConfiguration">
+    <file type="web" url="file://$PROJECT_DIR$/bean-scope" />
+  </component>
+  <component name="MavenProjectsManager">
+    <option name="originalFiles">
+      <list>
+        <option value="$PROJECT_DIR$/pom.xml" />
+      </list>
+    </option>
+    <option name="ignoredFiles">
+      <set>
+        <option value="$PROJECT_DIR$/annotation/pom.xml" />
+        <option value="$PROJECT_DIR$/aop-features/pom.xml" />
+        <option value="$PROJECT_DIR$/aop-overview/pom.xml" />
+        <option value="$PROJECT_DIR$/application-context-lifecycle/pom.xml" />
+        <option value="$PROJECT_DIR$/bean-lifecycle/pom.xml" />
+        <option value="$PROJECT_DIR$/bean-scope/pom.xml" />
+        <option value="$PROJECT_DIR$/configuration-metadata/pom.xml" />
+        <option value="$PROJECT_DIR$/conversion/pom.xml" />
+        <option value="$PROJECT_DIR$/data-binding/pom.xml" />
+        <option value="$PROJECT_DIR$/dependency-injection/pom.xml" />
+        <option value="$PROJECT_DIR$/dependency-lookup/pom.xml" />
+        <option value="$PROJECT_DIR$/dependency-source/pom.xml" />
+        <option value="$PROJECT_DIR$/environment/pom.xml" />
+        <option value="$PROJECT_DIR$/event/pom.xml" />
+        <option value="$PROJECT_DIR$/generic/pom.xml" />
+        <option value="$PROJECT_DIR$/i18n/pom.xml" />
+        <option value="$PROJECT_DIR$/questions/pom.xml" />
+        <option value="$PROJECT_DIR$/resource/pom.xml" />
+        <option value="$PROJECT_DIR$/spring-bean/pom.xml" />
+        <option value="$PROJECT_DIR$/validation/pom.xml" />
+      </set>
+    </option>
+  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_11" project-jdk-name="11" project-jdk-type="JavaSDK" />
+</project>

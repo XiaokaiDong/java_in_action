@@ -1,0 +1,14 @@
+<component name="ArtifactManager">
+  <artifact type="war" name="bean-scope:war">
+    <output-path>$PROJECT_DIR$/bean-scope/target</output-path>
+    <properties id="maven-jee-properties">
+      <options>
+        <module>bean-scope</module>
+        <packaging>war</packaging>
+      </options>
+    </properties>
+    <root id="archive" name="bean-scope-1.0-SNAPSHOT.war">
+      <element id="artifact" artifact-name="bean-scope:war exploded" />
+    </root>
+  </artifact>
+</component>

@@ -30,10 +30,115 @@ REDIS中，所有的数据都有一个键，这个键是全局哈希表的一个
 
 - 整体思路
 
-  根据上述的分析，需要将@Cacheable注解中的属性取出来用于RedisCacheManager加载缓存，那么，可以让RedisCacheManager实现BeanPostProcessor#postProcessBeforeInitialization，在这个方法中使用SpringCacheAnnotationParser解析@Cacheable中的信息，然后使用这些信息加载Redis缓存。
+  根据上述的分析，需要将@Cacheable注解中的属性取出来用于RedisCacheManager加载缓存，那么，可以在初始化相应Bean的时候，扫描自己，发现所有的@Cacheable注解，取出其中的信息，用于构建RedisCacheManager。
 
 - 具体实现
 
-  - RedisCacheManager在实现BeanPostProcessor#postProcessBeforeInitialization时，可以直接new一个AnnotationCacheOperationSource实例，在构造这个实例的时候，直接new一个SpringCacheAnnotationParser对象作为构造函数的参数
+  - 实现CacheManager工厂类 CacheManagerResolver，将操作委派给AnnotationCacheOperationSource。
 
-  - 调用AnnotationCacheOperationSource#findCacheOperations(java.lang.reflect.Method)得到Collection\<CacheOperation\>，然后将这些属性用于构造RedisCacheManager。
+    ```java
+    /**
+    * CacheManager工厂类
+    */
+    public class CacheManagerResolver implements CacheOperationSource, CacheOperationRegistry {
+
+        private final CacheOperationSource cacheOperationSource =
+                new AnnotationCacheOperationSource(new SpringCacheAnnotationParser());
+
+
+        @Override
+        public boolean isCandidateClass(Class<?> targetClass) {
+            return cacheOperationSource.isCandidateClass(targetClass);
+        }
+
+        @Override
+        public Collection<CacheOperation> getCacheOperations(Method method, Class<?> targetClass) {
+            return cacheOperationSource.getCacheOperations(method, targetClass);
+        }
+
+        public CacheManager getCacheManager(){
+            RedisCacheManager redisCacheManager = new RedisCacheManager("");
+            redisCacheManager.setCacheOperations(getCacheOperations());
+            return redisCacheManager;
+        }
+
+        @Override
+        public void addCacheOperations(Collection<CacheOperation> cacheOperations) {
+            //TODO
+        }
+
+        @Override
+        public Collection<CacheOperation> getCacheOperations() {
+            //TODO
+            return null;
+        }
+    }
+    ```
+
+  - 其中CacheOperationRegistry定义如下
+
+    ```java
+    /**
+    * 管理所有的CacheOperation
+    */
+    public interface CacheOperationRegistry {
+
+        /**
+        * 添加 CacheOperation。需要做到去重
+        * @param cacheOperations 需要被添加的CacheOperation
+        */
+        void addCacheOperations(Collection<CacheOperation> cacheOperations);
+
+        /**
+        * 返回所有的CacheOperation对象
+        * @return CacheOperation对象
+        */
+        Collection<CacheOperation> getCacheOperations();
+    }
+    ```
+
+  - 在定义服务类的时候，让其实现SmartInitializingSingleton接口，这样初始化Bean的时候，应用上下文就可以调用它来扫描缓存信息了.
+
+    比如CoffeeService在afterSingletonsInstantiated方法实现中获取缓存信息。
+
+    ```java
+    @Service
+    @CacheConfig(cacheNames = "coffee")
+    public class CoffeeService implements SmartInitializingSingleton {
+
+        @Autowired
+        CacheManagerResolver cacheManagerResolver;
+
+        @Autowired
+        CacheManager cacheManager;
+
+        @Cacheable
+        public List<Coffee> findAllCoffee() {
+            Coffee coffee = new Coffee();
+            coffee.setName("Mocha");
+            return Collections.singletonList(coffee);
+        }
+
+        @Override
+        public void afterSingletonsInstantiated() {
+            if(cacheManagerResolver.isCandidateClass(this.getClass())){
+                for (Method method: this.getClass().getMethods()) {
+                    cacheManagerResolver.addCacheOperations(
+                            cacheManagerResolver.getCacheOperations(method, this.getClass())
+                    );
+                }
+
+            }
+        }
+    }
+    ```
+
+  - 修改RedisCacheManager，使其可以保存所有的CacheOperation信息，并更具这些信息来创建缓存（尚未实现）
+
+    ```java
+    private Collection<CacheOperation> cacheOperations;
+
+    public void setCacheOperations(Collection<CacheOperation> cacheOperations) {
+        this.cacheOperations = cacheOperations;
+    }
+    ```
