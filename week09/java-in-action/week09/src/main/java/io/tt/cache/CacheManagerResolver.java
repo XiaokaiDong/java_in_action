@@ -13,6 +13,8 @@ import org.springframework.cache.interceptor.CacheOperationSource;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * CacheManager工厂类
@@ -21,6 +23,8 @@ public class CacheManagerResolver implements CacheOperationSource, CacheOperatio
 
     private final CacheOperationSource cacheOperationSource =
             new AnnotationCacheOperationSource(new SpringCacheAnnotationParser());
+
+    private final Map<String, CacheOperation> cacheOperationRegistry = new ConcurrentHashMap<>();
 
 
     @Override
@@ -41,12 +45,19 @@ public class CacheManagerResolver implements CacheOperationSource, CacheOperatio
 
     @Override
     public void addCacheOperations(Collection<CacheOperation> cacheOperations) {
-        //TODO
+        for (CacheOperation cacheOperation: cacheOperations) {
+            if (!cacheOperationRegistry.containsKey(cacheOperation.getName())) {
+                cacheOperationRegistry.putIfAbsent(cacheOperation.getName(), cacheOperation);
+            }
+        }
     }
 
     @Override
     public Collection<CacheOperation> getCacheOperations() {
-        //TODO
-        return null;
+        return cacheOperationRegistry.values();
+    }
+
+    public CacheOperation getCacheOperation(String name) {
+        return cacheOperationRegistry.get(name);
     }
 }
