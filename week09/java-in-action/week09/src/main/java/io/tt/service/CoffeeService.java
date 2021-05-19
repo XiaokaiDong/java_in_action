@@ -9,9 +9,11 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.interceptor.CacheOperation;
 import org.springframework.stereotype.Service;
 
 import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -22,9 +24,6 @@ public class CoffeeService implements SmartInitializingSingleton {
 
     @Autowired
     CacheManagerResolver cacheManagerResolver;
-
-    @Autowired
-    CacheManager cacheManager;
 
     @Cacheable
     public List<Coffee> findAllCoffee() {
@@ -37,9 +36,10 @@ public class CoffeeService implements SmartInitializingSingleton {
     public void afterSingletonsInstantiated() {
         if(cacheManagerResolver.isCandidateClass(this.getClass())){
             for (Method method: this.getClass().getMethods()) {
-                cacheManagerResolver.addCacheOperations(
-                        cacheManagerResolver.getCacheOperations(method, this.getClass())
-                );
+                Collection<CacheOperation> cacheOperations =
+                        cacheManagerResolver.getCacheOperations(method, this.getClass());
+                if (cacheOperations != null)
+                    cacheManagerResolver.addCacheOperations(cacheOperations);
             }
 
         }

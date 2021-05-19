@@ -49,6 +49,10 @@ public class RedisCacheManager extends AbstractCacheManager {
         this.cacheOperations = cacheOperations;
     }
 
+    public Collection<CacheOperation> getCacheOperations() {
+        return cacheOperations;
+    }
+
     @Override
     protected Collection<? extends Cache> loadCaches() {
         // 确保接口不返回 null

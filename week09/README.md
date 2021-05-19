@@ -45,6 +45,8 @@ REDIS中，所有的数据都有一个键，这个键是全局哈希表的一个
         private final CacheOperationSource cacheOperationSource =
                 new AnnotationCacheOperationSource(new SpringCacheAnnotationParser());
 
+        private final Map<String, CacheOperation> cacheOperationRegistry = new ConcurrentHashMap<>();
+
 
         @Override
         public boolean isCandidateClass(Class<?> targetClass) {
@@ -64,13 +66,20 @@ REDIS中，所有的数据都有一个键，这个键是全局哈希表的一个
 
         @Override
         public void addCacheOperations(Collection<CacheOperation> cacheOperations) {
-            //TODO
+            for (CacheOperation cacheOperation: cacheOperations) {
+                if (!cacheOperationRegistry.containsKey(cacheOperation.getName())) {
+                    cacheOperationRegistry.putIfAbsent(cacheOperation.getName(), cacheOperation);
+                }
+            }
         }
 
         @Override
         public Collection<CacheOperation> getCacheOperations() {
-            //TODO
-            return null;
+            return cacheOperationRegistry.values();
+        }
+
+        public CacheOperation getCacheOperation(String name) {
+            return cacheOperationRegistry.get(name);
         }
     }
     ```
@@ -108,10 +117,7 @@ REDIS中，所有的数据都有一个键，这个键是全局哈希表的一个
 
         @Autowired
         CacheManagerResolver cacheManagerResolver;
-
-        @Autowired
-        CacheManager cacheManager;
-
+        
         @Cacheable
         public List<Coffee> findAllCoffee() {
             Coffee coffee = new Coffee();
@@ -123,9 +129,10 @@ REDIS中，所有的数据都有一个键，这个键是全局哈希表的一个
         public void afterSingletonsInstantiated() {
             if(cacheManagerResolver.isCandidateClass(this.getClass())){
                 for (Method method: this.getClass().getMethods()) {
-                    cacheManagerResolver.addCacheOperations(
-                            cacheManagerResolver.getCacheOperations(method, this.getClass())
-                    );
+                    Collection<CacheOperation> cacheOperations =
+                            cacheManagerResolver.getCacheOperations(method, this.getClass());
+                    if (cacheOperations != null)
+                        cacheManagerResolver.addCacheOperations(cacheOperations);
                 }
 
             }
@@ -136,9 +143,73 @@ REDIS中，所有的数据都有一个键，这个键是全局哈希表的一个
   - 修改RedisCacheManager，使其可以保存所有的CacheOperation信息，并更具这些信息来创建缓存（尚未实现）
 
     ```java
-    private Collection<CacheOperation> cacheOperations;
+    public class RedisCacheManager extends AbstractCacheManager {
 
-    public void setCacheOperations(Collection<CacheOperation> cacheOperations) {
-        this.cacheOperations = cacheOperations;
+        private final JedisPool jedisPool;
+
+        public RedisCacheManager(String uri) {
+            this.jedisPool = new JedisPool(uri);
+        }
+
+        private Collection<CacheOperation> cacheOperations;
+
+        public void setCacheOperations(Collection<CacheOperation> cacheOperations) {
+            this.cacheOperations = cacheOperations;
+        }
+
+        public Collection<CacheOperation> getCacheOperations() {
+            return cacheOperations;
+        }
+
+        @Override
+        protected Collection<? extends Cache> loadCaches() {
+            // 确保接口不返回 null
+            List<? extends Cache> caches = new LinkedList<>();
+            prepareCaches(caches);
+            return caches;
+        }
+
+        protected Cache getMissingCache(String name) {
+            Jedis jedis = jedisPool.getResource();
+            return new RedisCache(name, jedis);
+        }
+
+        private void prepareCaches(List<? extends Cache> caches) {
+        }
+    }
+    ```
+
+    - 写一个测试代码
+    ```java
+    @ComponentScan(basePackages = "io.tt")
+    @Configuration
+    public class AnnotationRedisCacheDemo {
+        @Autowired
+        private CacheManagerResolver cacheManagerResolver;
+
+        public static void main(String[] args) {
+            AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext();
+
+            applicationContext.register(AnnotationRedisCacheDemo.class);
+
+            // 启动 Spring 应用上下文
+            applicationContext.refresh();
+
+            AnnotationRedisCacheDemo annotationRedisCacheDemo =
+                    (AnnotationRedisCacheDemo) applicationContext.getBean("annotationRedisCacheDemo");
+
+            RedisCacheManager cacheManager =
+                    (RedisCacheManager)annotationRedisCacheDemo.cacheManagerResolver.getCacheManager();
+
+            System.out.println(cacheManager.getCacheOperations());
+
+            // 显示地关闭 Spring 应用上下文
+            applicationContext.close();
+        }
+
+        @Bean
+        CacheManagerResolver cacheManagerResolver(){
+            return new CacheManagerResolver();
+        }
     }
     ```
