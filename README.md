@@ -108,3 +108,29 @@ JDNI 的方式获取数据库源（DataSource），在获取 Connection
 >
 > 背景:Spring Boot 场景下，自动装配以及自定义 Starter 方 式非常流行，部分开发人员掌握了 Spring Security 配置方 法，并且自定义了自己的实现，解决了 Order 的问题，然而 会出现不确定配置因素。
 
+## Week09
+
+### 作业内容1
+
+
+> - 如何清除某个 Spring Cache 所有的 Keys 关联的对象
+>   - 如果 Redis 中心化方案，Redis + Sentinel
+>   - 如果 Redis 去中心化方案，Redis Cluster
+
+### 作业内容2
+
+> 如何将 RedisCacheManager 与 @Cacheable 注解打通?
+
+## Week10
+
+### 作业内容
+
+
+> 完善 @org.geektimes.projects.user.mybatis.annotation.EnableMyBatis 实现，尽可能多地注入 org.mybatis.spring.SqlSessionFactoryBean 中依赖的组件
+
+## Week11
+
+### 作业内容
+
+> 通过 Java 实现两种（以及）更多的一致性 Hash 算法
+> （可选）实现服务节点动态更新

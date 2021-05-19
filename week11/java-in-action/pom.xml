@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.geekbang</groupId>
+    <artifactId>thinking-in-spring</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>week09</module>
+        <module>week11</module>
+    </modules>
+
+    <properties>
+        <spring.version>5.2.2.RELEASE</spring.version>
+        <javax.cache-api.version>1.1.1</javax.cache-api.version>
+        <lettuce.version>6.1.0.RELEASE</lettuce.version>
+        <jedis.version>3.5.2</jedis.version>
+    </properties>
+
+    <!-- Spring 依赖管理 -->
+    <dependencyManagement>
+        <dependencies>
+
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-aop</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-jdbc</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-webflux</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-webmvc</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+
+            <!-- Java Cache API -->
+            <dependency>
+                <groupId>javax.cache</groupId>
+                <artifactId>cache-api</artifactId>
+                <version>${javax.cache-api.version}</version>
+            </dependency>
+
+            <!-- Redis Java Client - Lettuce -->
+            <dependency>
+                <groupId>io.lettuce</groupId>
+                <artifactId>lettuce-core</artifactId>
+                <version>${lettuce.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>redis.clients</groupId>
+                <artifactId>jedis</artifactId>
+                <version>${jedis.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- Spring 依赖 -->
+    <dependencies>
+        <!-- Spring IoC 核心依赖 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webflux</artifactId>
+        </dependency>
+
+        <!-- Java Cache API -->
+        <dependency>
+            <groupId>javax.cache</groupId>
+            <artifactId>cache-api</artifactId>
+        </dependency>
+
+        <!-- Redis Java Client - Lettuce -->
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+
+    </build>
+</project>
