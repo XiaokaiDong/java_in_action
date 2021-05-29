@@ -182,16 +182,16 @@ public @interface EnableConfigurationProperties {
         >创建ConfigurationClassParser，解析所有找到的配置类，将BeanDefinitionHolder转换为ConfigurationClass。对于MybatisAutoConfiguration来说，直接使用其BeanDefinition包含的AnnotationMetadata和Bean的名字构造一个ConfigurationClass。
         >
         >对于上面创建好的ConfigurationClass，使用ConfigurationClassBeanDefinitionReader#loadBeanDefinitions读取。在ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass中有如下的逻辑
-        >```java
-        >if (configClass.isImported()) {
-			  > registerBeanDefinitionForImportedConfigurationClass(configClass);
-		    >}
-		    >for (BeanMethod beanMethod : configClass.getBeanMethods()) {
-			  > loadBeanDefinitionsForBeanMethod(beanMethod);
-		    >}
-        >
-		    >loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
-		    >loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
+        > ```java
+        > if (configClass.isImported()) {
+			  >  registerBeanDefinitionForImportedConfigurationClass(configClass);
+		    > }
+		    > for (BeanMethod beanMethod : configClass.getBeanMethods()) {
+			  >  loadBeanDefinitionsForBeanMethod(beanMethod);
+		    > }
+        > 
+		    > loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
+		    > loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
         >```
         
 
