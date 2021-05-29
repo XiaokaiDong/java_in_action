@@ -193,7 +193,39 @@ public @interface EnableConfigurationProperties {
 		    loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
 		    loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
         ```
-        
+        >在上面的逻辑之前还有一个当前配置类是否应该加载的判断
+        ```java
+        if (trackedConditionEvaluator.shouldSkip(configClass)) {
+        }
+        ```
+        >ConfigurationClassBeanDefinitionReader.TrackedConditionEvaluator#shouldSkip会递归判断当前配置类、当前配置类如果是内部类，则判断外部类，如果当前配置类是被@Imported引入的，判断@Imported所在的配置类。正好MybatisAutoConfiguration上有两个@Conditional注解
+        ```java
+        @org.springframework.context.annotation.Configuration
+        @ConditionalOnClass({ SqlSessionFactory.class, SqlSessionFactoryBean.class })
+        @ConditionalOnSingleCandidate(DataSource.class)
+        @EnableConfigurationProperties(MybatisProperties.class)
+        @AutoConfigureAfter({ DataSourceAutoConfiguration.class, MybatisLanguageDriverAutoConfiguration.class })
+        public class MybatisAutoConfiguration implements InitializingBean {
+        }
+        ```
+        >Spring会将@ConditionalOnClass和@ConditionalOnSingleCandidate注解定义中指明的类加载到当前JVM（它们都是被@Conditional”元注解“的注解，相当于是@Conditional的”子注解“）
+        ```java
+        @Target({ ElementType.TYPE, ElementType.METHOD })
+        @Retention(RetentionPolicy.RUNTIME)
+        @Documented
+        @Conditional(OnClassCondition.class)
+        public @interface ConditionalOnClass {
+        }
+
+        @Target({ ElementType.TYPE, ElementType.METHOD })
+        @Retention(RetentionPolicy.RUNTIME)
+        @Documented
+        @Conditional(OnBeanCondition.class)
+        public @interface ConditionalOnSingleCandidate {
+        }
+        ```
+        >根据上面的代码，对于MybatisAutoConfiguration来说，会加载并初始化OnClassCondition实例和OnBeanCondition实例。
+        >对于OnBeanCondition和对应的@ConditionalOnSingleCandidate注解来说，Spring利用依赖查找在当前上下文中查找相应的Bean。如果找到了，则当前配置类应该被加载，否则不进行加载。
 
       - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors处理BeanDefinitionRegistryPostProcessor类型的Bean
       - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors处理BeanFactoryPostProcessor类型的Bean
