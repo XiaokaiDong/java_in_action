@@ -117,12 +117,12 @@ public @interface EnableConfigurationProperties {
 >   ClassPathBeanDefinitionScanner的构造函数会利用AnnotationConfigUtils.registerAnnotationConfigProcessors来注册一些内部依赖
 > ```java
 > 	public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry, Environment environment) {
->		Assert.notNull(registry, "BeanDefinitionRegistry must not be null");
->		Assert.notNull(environment, "Environment must not be null");
->		this.registry = registry;
->		this.conditionEvaluator = new ConditionEvaluator(registry, environment, null);
->		AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
->	}
+>		  Assert.notNull(registry, "BeanDefinitionRegistry must not be null");
+>		  Assert.notNull(environment, "Environment must not be null");
+>		  this.registry = registry;
+>		  this.conditionEvaluator = new ConditionEvaluator(registry, environment, null);
+>		  AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
+>	  }
 > ```
 >   这些最原始的依赖非常特殊，即不是依赖查找来的，也不是依赖注入来的，而是使用RootBeanDefinition直接创建的，比如名为org.springframework.context.annotation.internalConfigurationAnnotationProcessor的依赖Bean
 >```java
@@ -136,10 +136,75 @@ public @interface EnableConfigurationProperties {
 
 > 还可以用AnnotationConfigApplicationContext#register手动注册配置类而无需借助@Configuration注解
 > ```java
->
+>    this.context.register(SingleCandidateDataSourceConfiguration.class, MybatisAutoConfiguration.class,
+>        PropertyPlaceholderAutoConfiguration.class);
 > ```
 
 ### 涉及到的Spring 应用上下文知识点
 
 - 上下文创建
-  - 注册了很多配置类，比如internalConfigurationAnnotationProcessor
+  ```java
+  this.context = new AnnotationConfigApplicationContext()
+  ```
+  Spring会创建很多内部依赖，比如internalConfigurationAnnotationProcessor。这些依赖可以看做底层组件，也即非业务相关的组件。
+    
+- 手动注册配置类——业务相关的配置类
+  ```java
+  this.context.register(MybatisAutoConfiguration.class, PropertyPlaceholderAutoConfiguration.class);
+  ```
+
+- 上下文刷新
+  ```java
+  context.refresh();
+  ```
+  - …… （忽略其它不相关步骤）
+  - BeanFactory后置处理——AbstractApplicationContext#invokeBeanFactoryPostProcessors
+    委派PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors进行处理
+
+    > 现在我们手边有了内部依赖，还有了若干业务相关的配置类，这里就开始处理这些配置类。
+
+    - 从上下文中查找类型为BeanDefinitionRegistryPostProcessor的Bean，正好在上下文创建的时候，创建了一个ConfigurationClassPostProcessor的Bean，它实现了BeanDefinitionRegistryPostProcessor接口。
+
+      - 首先处理实现了PriorityOrdered接口的BeanDefinitionRegistryPostProcessor。
+
+        ConfigurationClassPostProcessor也实现了PriorityOrdered接口。
+
+      - 然后处理实现了Ordered接口的BeanDefinitionRegistryPostProcessor。
+      - 最后处理剩余的BeanDefinitionRegistryPostProcessor。
+
+        处理都是调用PostProcessorRegistrationDelegate#invokeBeanDefinitionRegistryPostProcessors进行的。
+        它调用BeanDefinitionRegistryPostProcessor（比如这里的ConfigurationClassPostProcessor）的postProcessBeanDefinitionRegistry方法。ConfigurationClassPostProcessor类如其名，主要内容是处理配置类的定义：
+
+        >依次当前被处理的BeanDefinitionRegistry中的所有BeanDefinitionNames，然后找到对应的BeanDefinition，判断对应的BeanDefinition是不是配置类，原理就是寻找这个类是不是被注解@Configuration标注，如果是的话，取出这个注解上的相关值：
+        >
+        >如果Configuration#proxyBeanMethods 为true，将名为”org.springframework.context.annotation.ConfigurationClassPostProcessor.configurationClass“，值为BeanMetadataAttribute对象的属性设置到BeanDefinition上。BeanMetadataAttribute对象封装了同样的名字和值对象Object，它的值可能为"full".
+        >
+        >创建ConfigurationClassParser，解析所有找到的配置类，将BeanDefinitionHolder转换为ConfigurationClass。对于MybatisAutoConfiguration来说，直接使用其BeanDefinition包含的AnnotationMetadata和Bean的名字构造一个ConfigurationClass。
+        >
+        >对于上面创建好的ConfigurationClass，使用ConfigurationClassBeanDefinitionReader#loadBeanDefinitions读取。在ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass中有如下的逻辑
+        >```java
+        >if (configClass.isImported()) {
+			  >  registerBeanDefinitionForImportedConfigurationClass(configClass);
+		    >}
+		    >for (BeanMethod beanMethod : configClass.getBeanMethods()) {
+			  > loadBeanDefinitionsForBeanMethod(beanMethod);
+		    >}
+        >
+		    >loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
+		    >loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
+        >```
+        
+
+      - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors处理BeanDefinitionRegistryPostProcessor类型的Bean
+      - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors处理BeanFactoryPostProcessor类型的Bean
+
+      > BeanDefinitionRegistryPostProcessor是BeanFactoryPostProcessor的子接口。
+
+    - 从上下文中查找类型为BeanFactoryPostProcessor的Bean。
+
+      - 首先处理实现了PriorityOrdered接口的BeanFactoryPostProcessor。
+      - 然后处理实现了Ordered接口的BeanFactoryPostProcessor。
+      - 最后处理剩余的BeanFactoryPostProcessor。
+
+      处理都是调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors进行的。
+
