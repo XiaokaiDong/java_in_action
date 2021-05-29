@@ -184,7 +184,7 @@ public @interface EnableConfigurationProperties {
         >对于上面创建好的ConfigurationClass，使用ConfigurationClassBeanDefinitionReader#loadBeanDefinitions读取。在ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass中有如下的逻辑
         >```java
         >if (configClass.isImported()) {
-			  >  registerBeanDefinitionForImportedConfigurationClass(configClass);
+			  > registerBeanDefinitionForImportedConfigurationClass(configClass);
 		    >}
 		    >for (BeanMethod beanMethod : configClass.getBeanMethods()) {
 			  > loadBeanDefinitionsForBeanMethod(beanMethod);
