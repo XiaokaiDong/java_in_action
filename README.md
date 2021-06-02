@@ -134,3 +134,17 @@ JDNI 的方式获取数据库源（DataSource），在获取 Connection
 
 > 通过 Java 实现两种（以及）更多的一致性 Hash 算法
 > （可选）实现服务节点动态更新
+
+## Week12
+
+### 作业内容
+
+> 将上次 MyBatis @Enable 模块驱动，封装成 Spring Boot Starter 方式参考：MyBatis Spring Project 里面会有 Spring Boot 实现
+
+## Week13
+
+
+### 作业内容
+
+> 基于文件系统为 Spring Cloud 提供 PropertySourceLocator 实现
+> 配置文件命名规则(META-INF/config/default.properties 或者 META-INF/config/default.yaml)

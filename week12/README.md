@@ -645,7 +645,7 @@ beanName.equals("mybatisAutoConfiguration")
 
   >委托给PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors。
   
-  上面讲到ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass会加载由@Import导入或配置类内嵌的配置类、配置类中由@Bean注解定义的Bean和使用@ImportResource导入的XML中定义的Bean（这几类是由ConfigurationClassParser#doProcessConfigurationClass扫描进来的）、由ImportBeanDefinitionRegistrar导入的Bean（对应@EnableXXX注解）。所有这些Bean定义BeanDefinition都会被放入`DefaultListableBeanFactory#beanDefinitionMap`属性中。
+  上面讲到ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass会加载由@Import导入或配置类内嵌的配置类、配置类中由@Bean注解定义的Bean和使用@ImportResource导入的XML中定义的Bean（这几类是由ConfigurationClassParser#doProcessConfigurationClass 扫描进来的）、由ImportBeanDefinitionRegistrar导入的Bean（对应@EnableXXX注解）。所有这些Bean定义BeanDefinition都会被放入`DefaultListableBeanFactory#beanDefinitionMap`属性中。
 
   此时的BeanDefinition就是创建Bean实例的蓝本。对于配置类，比如MybatisAutoConfiguration，比如在依赖查找的时候，会调用
 
@@ -669,3 +669,101 @@ beanName.equals("mybatisAutoConfiguration")
 		return getMergedBeanDefinition(beanName, getBeanDefinition(beanName));
 	}
   ```
+
+- ConfigurationClassParser#doProcessConfigurationClass
+
+  有如下的处理逻辑。
+
+  >相应的，找到的内容，下一步会被ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass处理
+  ```java
+  /**
+	 * Read a particular {@link ConfigurationClass}, registering bean definitions
+	 * for the class itself and all of its {@link Bean} methods.
+	 */
+	private void loadBeanDefinitionsForConfigurationClass(
+			ConfigurationClass configClass, TrackedConditionEvaluator trackedConditionEvaluator) {
+
+		if (trackedConditionEvaluator.shouldSkip(configClass)) {
+			String beanName = configClass.getBeanName();
+			if (StringUtils.hasLength(beanName) && this.registry.containsBeanDefinition(beanName)) {
+				this.registry.removeBeanDefinition(beanName);
+			}
+			this.importRegistry.removeImportingClass(configClass.getMetadata().getClassName());
+			return;
+		}
+
+		if (configClass.isImported()) {
+			registerBeanDefinitionForImportedConfigurationClass(configClass);
+		}
+		for (BeanMethod beanMethod : configClass.getBeanMethods()) {
+			loadBeanDefinitionsForBeanMethod(beanMethod);
+		}
+
+		loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
+		loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
+	}
+  ```
+
+  - 处理@Component
+  - 处理@PropertySource annotations
+  - 处理@ComponentScan annotations
+  - 处理@Import annotations
+
+    会递归扫描所有被@Import的类，以及通过@Import被引入的类上额外的@Import二次引入的类，以此类推。
+    会分成如下三种情况：
+
+    - `candidate.isAssignable(ImportSelector.class)`
+    - `candidate.isAssignable(ImportBeanDefinitionRegistrar.class)`
+    - 普通的配置类
+
+    如果有被@Import引入的ImportSelector，而这个ImportSelector又引入了EnableAutoConfiguration则会导致spring.factories被处理，自动配置类名字被加载后，会被spring.factories中定义的过滤器过滤，如下
+
+    ># Auto Configuration Import Filters
+    >org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
+    >org.springframework.boot.autoconfigure.condition.OnBeanCondition,\
+    >org.springframework.boot.autoconfigure.condition.OnClassCondition,\
+    >org.springframework.boot.autoconfigure.condition.OnWebApplicationCondition
+
+  - 处理@ImportResource annotations
+  - 处理@Bean annotations
+
+
+
+##### BeanDefinition 的注册
+
+- AnnotatedBeanDefinitionReader#registerBean
+  - AnnotatedBeanDefinitionReader#doRegisterBean
+
+- AnnotatedBeanDefinitionReader#doRegisterBean
+
+  首先利用被注册的Bean的类型初始化一个AnnotatedGenericBeanDefinition，然后直接评估是否应该跳过
+  ```java
+  AnnotatedGenericBeanDefinition abd = new AnnotatedGenericBeanDefinition(beanClass);
+  if (this.conditionEvaluator.shouldSkip(abd.getMetadata())) {
+    return;
+  }
+  ```
+
+  上面的判断没有命中，所以BeanDefinition被放入`DefaultListableBeanFactory#beanDefinitionNames`中。
+
+- 对于配置类来说，它也是一个Bean，还需要经过ConfigurationClassPostProcessor#postProcessBeanDefinitionRegistry的处理
+
+  ConfigurationClassPostProcessor#postProcessBeanDefinitionRegistry会调用
+  
+  - ConfigurationClassBeanDefinitionReader#loadBeanDefinitions
+    - ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass
+
+  在ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass中会对是否应该加载配置类中定义的Bean进行判断
+
+  ```java
+  if (trackedConditionEvaluator.shouldSkip(configClass)) {
+    String beanName = configClass.getBeanName();
+    if (StringUtils.hasLength(beanName) && this.registry.containsBeanDefinition(beanName)) {
+      this.registry.removeBeanDefinition(beanName);
+    }
+    this.importRegistry.removeImportingClass(configClass.getMetadata().getClassName());
+    return;
+  }
+  ```
+
+  ConfigurationClassBeanDefinitionReader.TrackedConditionEvaluator#shouldSkip会调用ConditionEvaluator#shouldSkip(AnnotatedTypeMetadata, ConfigurationCondition.ConfigurationPhase)，后者会判断@Conditional系列注解是否得到满足，从而决定是否应该加载配置类中定义的Bean。如果决定不处理，则会将当前配置类Bean的名字从`DefaultListableBeanFactory#beanDefinitionNames`中去除。
