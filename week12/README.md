@@ -674,7 +674,134 @@ beanName.equals("mybatisAutoConfiguration")
 
   有如下的处理逻辑。
 
-  >相应的，找到的内容，下一步会被ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass处理
+  - 处理@Component
+  - 处理@PropertySource annotations
+  - 处理@ComponentScan annotations
+  - 处理@Import annotations
+
+    会递归扫描所有被@Import的类，以及通过@Import被引入的类上额外的@Import二次引入的类，以此类推。
+    会分成如下三种情况：
+
+    - `candidate.isAssignable(ImportSelector.class)`
+    - `candidate.isAssignable(ImportBeanDefinitionRegistrar.class)`
+    - 普通的配置类
+
+    - 如果有被@Import引入的ImportSelector，而这个ImportSelector又引入了EnableAutoConfiguration则会导致spring.factories被处理，调用路径如下
+    
+      - ConfigurationClassParser#parse(Set<BeanDefinitionHolder>)
+        - ConfigurationClassParser.DeferredImportSelectorHandler#process
+          - ConfigurationClassParser.DeferredImportSelectorGroupingHandler#processGroupImports
+          - ConfigurationClassParser.DeferredImportSelectorGrouping#getImports
+          - AutoConfigurationImportSelector.AutoConfigurationGroup#process
+          - AutoConfigurationImportSelector#getAutoConfigurationEntry
+          - AutoConfigurationImportSelector#getCandidateConfigurations
+          - SpringFactoriesLoader#loadFactoryNames
+      
+
+      >注意：DeferredImportSelectorHandler这个类中有一个延迟的含义("Deferred")，它的主要作用是来处理所有的DeferredImportSelector，相当于是DeferredImportSelector的“容器”
+      ```java
+      private class DeferredImportSelectorHandler {
+
+        @Nullable
+        private List<DeferredImportSelectorHolder> deferredImportSelectors = new ArrayList<>();
+      }
+      ```
+      >在其方法ConfigurationClassParser.DeferredImportSelectorHandler#handle中将DeferredImportSelector放到这个“容器”中，主要看下面的else分支
+      ```java
+      /**
+      * Handle the specified {@link DeferredImportSelector}. If deferred import
+      * selectors are being collected, this registers this instance to the list. If
+      * they are being processed, the {@link DeferredImportSelector} is also processed
+      * immediately according to its {@link DeferredImportSelector.Group}.
+      * @param configClass the source configuration class
+      * @param importSelector the selector to handle
+      */
+      public void handle(ConfigurationClass configClass, DeferredImportSelector importSelector) {
+        DeferredImportSelectorHolder holder = new DeferredImportSelectorHolder(configClass, importSelector);
+        if (this.deferredImportSelectors == null) {
+          DeferredImportSelectorGroupingHandler handler = new DeferredImportSelectorGroupingHandler();
+          handler.register(holder);
+          handler.processGroupImports();
+        }
+        else {
+          this.deferredImportSelectors.add(holder);
+        }
+      }
+      ```
+      >而handle方法是由处理@Imports的ConfigurationClassParser#processImports调用的，当被@Imports引入的是一个DeferredImportSelector实例时，就会被加入到“容器”中。
+      >那么，“延迟”体现在什么地方呢？主要体现在ConfigurationClassParser#parse(Set<BeanDefinitionHolder>  configCandidates)处理完所有的应用定义的配置类后才处理DeferredImportSelector
+      ```java
+      public void parse(Set<BeanDefinitionHolder> configCandidates) {
+        for (BeanDefinitionHolder holder : configCandidates) {
+          //处理所有的配置类Bean定义 
+          ...
+        }
+
+        //延迟处理DeferredImportSelector
+        this.deferredImportSelectorHandler.process();
+      }
+      ```
+      >DeferredImportSelector的文档中也特别做了说明
+      ```java
+      /**
+      * A variation of {@link ImportSelector} that runs after all {@code @Configuration} beans
+      * have been processed. This type of selector can be particularly useful when the selected
+      * imports are {@code @Conditional}.
+      *
+      * <p>Implementations can also extend the {@link org.springframework.core.Ordered}
+      * interface or use the {@link org.springframework.core.annotation.Order} annotation to
+      * indicate a precedence against other {@link DeferredImportSelector DeferredImportSelectors}.
+      *
+      * <p>Implementations may also provide an {@link #getImportGroup() import group} which
+      * can provide additional sorting and filtering logic across different selectors.
+      *
+      * @author Phillip Webb
+      * @author Stephane Nicoll
+      * @since 4.0
+      */
+      public interface DeferredImportSelector extends ImportSelector {
+      ```
+      >Spring自动配置应该也是处理完业务的配置类后再根据用户的配置引入一些自动配置类，符合“延迟”的含义——AutoConfigurationImportSelector。
+      
+      - 自动配置类名字被加载后，会被spring.factories中定义的过滤器过滤，如下
+
+        ># Auto Configuration Import Filters
+        >org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
+        >org.springframework.boot.autoconfigure.condition.OnBeanCondition,\
+        >org.springframework.boot.autoconfigure.condition.OnClassCondition,\
+        >org.springframework.boot.autoconfigure.condition.OnWebApplicationCondition
+
+      - 然后又使用SpringFactoriesLoader.loadFactories机制，在spring.factories中加载AutoConfigurationImportListener的实现类
+
+        ># Auto Configuration Import Listeners
+        >org.springframework.boot.autoconfigure.AutoConfigurationImportListener=\
+        >org.springframework.boot.autoconfigure.condition.ConditionEvaluationReportAutoConfigurationImportListener
+
+        向其发送AutoConfigurationImportEvent事件, AutoConfigurationImportSelector#fireAutoConfigurationImportEvents
+        ```java
+        private void fireAutoConfigurationImportEvents(List<String> configurations, Set<String> exclusions) {
+          List<AutoConfigurationImportListener> listeners = getAutoConfigurationImportListeners();
+          if (!listeners.isEmpty()) {
+            AutoConfigurationImportEvent event = new AutoConfigurationImportEvent(this, configurations, exclusions);
+            for (AutoConfigurationImportListener listener : listeners) {
+              invokeAwareMethods(listener);
+              listener.onAutoConfigurationImportEvent(event);
+            }
+          }
+        }
+        ```
+
+      - 加载所有的自动配置类名字后，会在AutoConfigurationImportSelector.AutoConfigurationGroup#selectImports中对它们进行排序
+
+        AutoConfigurationImportSelector.AutoConfigurationGroup#selectImports
+        AutoConfigurationImportSelector.AutoConfigurationGroup#sortAutoConfigurations
+
+        在这个过程中，会处理大量类似@AutoConfigureAfter、@AutoConfigureBefore之类的注解。
+
+  - 处理@ImportResource annotations
+  - 处理@Bean annotations
+
+  >相应的，上面找到的内容，接下来会被ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass处理
   ```java
   /**
 	 * Read a particular {@link ConfigurationClass}, registering bean definitions
@@ -703,29 +830,6 @@ beanName.equals("mybatisAutoConfiguration")
 		loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
 	}
   ```
-
-  - 处理@Component
-  - 处理@PropertySource annotations
-  - 处理@ComponentScan annotations
-  - 处理@Import annotations
-
-    会递归扫描所有被@Import的类，以及通过@Import被引入的类上额外的@Import二次引入的类，以此类推。
-    会分成如下三种情况：
-
-    - `candidate.isAssignable(ImportSelector.class)`
-    - `candidate.isAssignable(ImportBeanDefinitionRegistrar.class)`
-    - 普通的配置类
-
-    如果有被@Import引入的ImportSelector，而这个ImportSelector又引入了EnableAutoConfiguration则会导致spring.factories被处理，自动配置类名字被加载后，会被spring.factories中定义的过滤器过滤，如下
-
-    ># Auto Configuration Import Filters
-    >org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
-    >org.springframework.boot.autoconfigure.condition.OnBeanCondition,\
-    >org.springframework.boot.autoconfigure.condition.OnClassCondition,\
-    >org.springframework.boot.autoconfigure.condition.OnWebApplicationCondition
-
-  - 处理@ImportResource annotations
-  - 处理@Bean annotations
 
 
 
