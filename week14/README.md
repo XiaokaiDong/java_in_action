@@ -439,36 +439,3 @@ public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionR
 	  ```java
 	  beanDefinition.setAttribute(FactoryBean.OBJECT_TYPE_ATTRIBUTE, className);
 	  ```
-
-
-
-
-
-## 作业内容
-
-
-
-
-
-
-
-> 将上次 MyBatis @Enable 模块驱动，封装成 Spring Boot Starter 方式参考：MyBatis Spring Project 里面会有 Spring Boot 实现
-
-
-
-
-
-
-
-
-
-
-
-## 解答
-
-
-
-
-
-
-
