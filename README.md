@@ -148,3 +148,20 @@ JDNI 的方式获取数据库源（DataSource），在获取 Connection
 
 > 基于文件系统为 Spring Cloud 提供 PropertySourceLocator 实现
 > 配置文件命名规则(META-INF/config/default.properties 或者 META-INF/config/default.yaml)
+
+
+## Week14
+
+### 作业内容
+
+>利用Redis实现Spring Cloud Bus 中的 BusBridge，避免强依赖于Spring Cloud Stream.
+>客户端主要使用lettuce。其实RedisTemplate也实现了相关的功能。
+
+
+## Week15
+
+### 作业内容
+
+>通过 GraalVM 将一个简单 Spring Boot 工程构建为 Native Image，要求：
+> - 代码要自己手写 @Controller @RequestMapping("/helloworld")
+> - 相关插件可以参考 Spring Native Samples
