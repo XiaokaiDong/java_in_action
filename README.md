@@ -165,3 +165,9 @@ JDNI 的方式获取数据库源（DataSource），在获取 Connection
 >通过 GraalVM 将一个简单 Spring Boot 工程构建为 Native Image，要求：
 > - 代码要自己手写 @Controller @RequestMapping("/helloworld")
 > - 相关插件可以参考 Spring Native Samples
+
+## Week16
+
+### 作业内容
+
+>将 Spring Boot 应用打包 Java Native 应用，再将该应用通过 Dockerfile 构建 Docker 镜像，部署到 Docker 容器中，并且成功运行，Spring Boot 应用的实现复杂度不做要求
