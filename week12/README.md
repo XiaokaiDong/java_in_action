@@ -52,7 +52,7 @@ org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration
 
 
 
-调制执行测试方法org.mybatis.spring.boot.autoconfigure.MybatisAutoConfigurationTest#testSingleCandidateDataSource，并在MybatisAutoConfiguration的构造函数内打上断点，可以看出因为MybatisAutoConfiguration是一个配置类，所以上下文刷新的时候，会创建对应的Bean，导致其构造函数被调用。那么，构造函数的参数是怎么来的？
+调试执行测试方法org.mybatis.spring.boot.autoconfigure.MybatisAutoConfigurationTest#testSingleCandidateDataSource，并在MybatisAutoConfiguration的构造函数内打上断点，可以看出因为MybatisAutoConfiguration是一个配置类，所以上下文刷新的时候，会创建对应的Bean，导致其构造函数被调用。那么，构造函数的参数是怎么来的？
 
 
 
@@ -116,21 +116,13 @@ beanName.equals("mybatisAutoConfiguration")
 
 
 
-- 1、MybatisProperties Bean
-
-
+1. MybatisProperties Bean
 
   > 先给结论：
-
-
-
+  >
   > MybatisProperties由配置类MybatisAutoConfiguration上的注解@EnableConfigurationProperties引入。在Spring上下文启动的上下文后置处理阶段处理配置类时，会将配置类上@EnableConfigurationProperties注解内标注的类对应的BeanDefinition——这里即MybatisProperties——通过@EnableXXX注解关联的ImportBeanDefinitionRegistrar注册到上下文中（这里的实现类是EnableConfigurationPropertiesRegistrar）。
 
-
-
-  MybatisProperties Bean由MybatisAutoConfiguration这个配置类通过注解@EnableConfigurationProperties引入
-
-
+MybatisProperties Bean由MybatisAutoConfiguration这个配置类通过注解@EnableConfigurationProperties引入
 
   ```java
 
@@ -145,14 +137,12 @@ beanName.equals("mybatisAutoConfiguration")
   @AutoConfigureAfter({ DataSourceAutoConfiguration.class, MybatisLanguageDriverAutoConfiguration.class })
 
   public class MybatisAutoConfiguration implements InitializingBean {
+      //...
+  }
 
   ```
 
-
-
   根据@EnableConfigurationProperties的一般原理，它是由EnableConfigurationPropertiesRegistrar进行处理的
-
-
 
   ```java
 
@@ -168,11 +158,7 @@ beanName.equals("mybatisAutoConfiguration")
 
   ```
 
-
-
   关键方法EnableConfigurationPropertiesRegistrar#registerBeanDefinitions定义如下
-
-
 
   ```java
 
@@ -192,9 +178,7 @@ beanName.equals("mybatisAutoConfiguration")
 
   ```
 
-  在ConfigurationPropertiesBeanRegistrar#register(java.lang.Class<?>)上打上断点，调试运行MybatisAutoConfigurationTest#testSingleCandidateDataSource，可以得知，EnableConfigurationPropertiesRegistrar#registerBeanDefinitions的处理入口是AbstractApplicationContext#invokeBeanFactoryPostProcessors，即上下文后置处理阶段：
-
-
+在ConfigurationPropertiesBeanRegistrar#register(java.lang.Class<?>)上打上断点，调试运行MybatisAutoConfigurationTest#testSingleCandidateDataSource，可以得知，EnableConfigurationPropertiesRegistrar#registerBeanDefinitions的处理入口是AbstractApplicationContext#invokeBeanFactoryPostProcessors，即上下文后置处理阶段：
 
   - AbstractApplicationContext#refresh
 
@@ -221,109 +205,139 @@ beanName.equals("mybatisAutoConfiguration")
 
 
   > 相关知识：internalConfigurationAnnotationProcessor这样的配置Bean是从哪来的？
-
   >
-
   > 像盖房子一样，在上下文比如AnnotationConfigApplicationContext的创建过程中，需要创建一些最初的工具用来加载各种各样的Bean，工具有两种：
-
+  >
   > - 扫描Bean定义的扫描器ClassPathBeanDefinitionScanner
-
+  >
+  >   ClassPathBeanDefinitionScanner#scan
+  >
+  >   
+  >
+  >   ```java
+  >   /**
+  >    * Perform a scan within the specified base packages.
+  >    * @param basePackages the packages to check for annotated classes
+  >    * @return number of beans registered
+  >    */
+  >   public int scan(String... basePackages) {
+  >   	int beanCountAtScanStart = this.registry.getBeanDefinitionCount();
+  >   
+  >   	doScan(basePackages);
+  >   
+  >   	// Register annotation config processors, if necessary.
+  >   	if (this.includeAnnotationConfig) {
+  >   		AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
+  >   	}
+  >   
+  >   	return (this.registry.getBeanDefinitionCount() - beanCountAtScanStart);
+  >   }
+  >   ```
+  >
+  > 这些最原始的依赖非常特殊，即不是依赖查找来的，也不是依赖注入来的，而是使用RootBeanDefinition直接创建的，比如名为org.springframework.context.annotation.internalConfigurationAnnotationProcessor的依赖Bean是在上面的scan中使用AnnotationConfigUtils.registerAnnotationConfigProcessors注册的，如下的代码片段
+  >
+  >   ```java
+  >   if (!registry.containsBeanDefinition(CONFIGURATION_ANNOTATION_PROCESSOR_BEAN_NAME)) {
+  >   
+  >       RootBeanDefinition def = new RootBeanDefinition(ConfigurationClassPostProcessor.class);
+  >   
+  >       def.setSource(source);
+  >   
+  >       beanDefs.add(registerPostProcessor(registry, def, CONFIGURATION_ANNOTATION_PROCESSOR_BEAN_NAME));
+  >   
+  >     }
+  >   ```
+  >
+  >   AnnotationConfigUtils.registerAnnotationConfigProcessors总共注册了如下的特殊Bean
+  >
+  > | 名称                                     | 类型                                   |
+  > | ---------------------------------------- | -------------------------------------- |
+  > | internalConfigurationAnnotationProcessor | ConfigurationClassPostProcessor        |
+  > | internalAutowiredAnnotationProcessor     | AutowiredAnnotationBeanPostProcessor   |
+  > | internalRequiredAnnotationProcessor      | RequiredAnnotationBeanPostProcessor    |
+  > | internalCommonAnnotationProcessor        | CommonAnnotationBeanPostProcessor      |
+  > | internalPersistenceAnnotationProcessor   | PersistenceAnnotationBeanPostProcessor |
+  > | internalEventListenerProcessor           | EventListenerMethodProcessor           |
+  > | internalEventListenerFactory             | DefaultEventListenerFactory            |
+  >
+  > - 读取Bean定义的读取器AnnotatedBeanDefinitionReader
+  >
+  >   利用AnnotationConfigUtils.registerAnnotationConfigProcessors来注册一些内部依赖
+  >
+  >   ```java
+  >   public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry, Environment environment) {
+  >   
+  >       Assert.notNull(registry, "BeanDefinitionRegistry must not be null");
+  >   
+  >       Assert.notNull(environment, "Environment must not be null");
+  >   
+  >       this.registry = registry;
+  >   
+  >       this.conditionEvaluator = new ConditionEvaluator(registry, environment, null);
+  >   
+  >       AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
+  >   
+  >     }
+  >   ```
+  >
+  >   **<u>可以看出不论是ClassPathBeanDefinitionScanner还是AnnotatedBeanDefinitionReader都使用了AnnotationConfigUtils.registerAnnotationConfigProcessors。</u>**
+  >
+  > - 还可以用AnnotationConfigApplicationContext#register手动注册配置类而无需借助@Configuration注解，比如
+  >
+  >   ```java
+  >   this.context.register(SingleCandidateDataSourceConfiguration.class,
+  >                         MybatisAutoConfiguration.class,PropertyPlaceholderAutoConfiguration.class);
+  >     
+  >   ```
+  >
   >   
 
-  > ClassPathBeanDefinitionScanner的构造函数会利用AnnotationConfigUtils.registerAnnotationConfigProcessors来注册一些内部依赖
+2. 其余的ObjectProvider参数
 
-  ```java
+也是使用DefaultListableBeanFactory#resolveDependency来解析的，只是这时直接返回一个DependencyObjectProvider类型的实例(下面代码第2个分支)
 
-  public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry, Environment environment) {
+```java
+@Override
+@Nullable
+public Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName,
+		@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) throws BeansException {
 
-    Assert.notNull(registry, "BeanDefinitionRegistry must not be null");
-
-    Assert.notNull(environment, "Environment must not be null");
-
-    this.registry = registry;
-
-    this.conditionEvaluator = new ConditionEvaluator(registry, environment, null);
-
-    AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
-
-  }
-
-  ```
-
-  >这些最原始的依赖非常特殊，即不是依赖查找来的，也不是依赖注入来的，而是使用RootBeanDefinition直接创建的，比如名为org.springframework.context.annotation.internalConfigurationAnnotationProcessor的依赖Bean
-
-  ```java
-
-  if (!registry.containsBeanDefinition(CONFIGURATION_ANNOTATION_PROCESSOR_BEAN_NAME)) {
-
-    RootBeanDefinition def = new RootBeanDefinition(ConfigurationClassPostProcessor.class);
-
-    def.setSource(source);
-
-    beanDefs.add(registerPostProcessor(registry, def, CONFIGURATION_ANNOTATION_PROCESSOR_BEAN_NAME));
-
-  }
-
-  ```
-
-  > - 读取Bean定义的读取器AnnotatedBeanDefinitionReader
-
-
-
-  >   还可以用AnnotationConfigApplicationContext#register手动注册配置类而无需借助@Configuration注解
-
-  ```java
-
-  this.context.register(SingleCandidateDataSourceConfiguration.class, MybatisAutoConfiguration.class,PropertyPlaceholderAutoConfiguration.class);
-
-  ```
-
-- 2、其余的ObjectProvider参数
-
-  也是使用DefaultListableBeanFactory#resolveDependency来解析的，只是这时直接返回一个DependencyObjectProvider类型的实例(下面代码第2个分支)
-
-  ```java
-  @Override
-	@Nullable
-	public Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName,
-			@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) throws BeansException {
-
-		descriptor.initParameterNameDiscovery(getParameterNameDiscoverer());
-		if (Optional.class == descriptor.getDependencyType()) {
-			return createOptionalDependency(descriptor, requestingBeanName);
-		}
-		else if (ObjectFactory.class == descriptor.getDependencyType() ||
-				ObjectProvider.class == descriptor.getDependencyType()) {
-			return new DependencyObjectProvider(descriptor, requestingBeanName);
-		}
-		else if (javaxInjectProviderClass == descriptor.getDependencyType()) {
-			return new Jsr330Factory().createDependencyProvider(descriptor, requestingBeanName);
-		}
-		else {
-			Object result = getAutowireCandidateResolver().getLazyResolutionProxyIfNecessary(
-					descriptor, requestingBeanName);
-			if (result == null) {
-				result = doResolveDependency(descriptor, requestingBeanName, autowiredBeanNames, typeConverter);
-			}
-			return result;
-		}
+	descriptor.initParameterNameDiscovery(getParameterNameDiscoverer());
+	if (Optional.class == descriptor.getDependencyType()) {
+		return createOptionalDependency(descriptor, requestingBeanName);
 	}
-  ```
+	else if (ObjectFactory.class == descriptor.getDependencyType() ||
+			ObjectProvider.class == descriptor.getDependencyType()) {
+		return new DependencyObjectProvider(descriptor, requestingBeanName);
+	}
+	else if (javaxInjectProviderClass == descriptor.getDependencyType()) {
+		return new Jsr330Factory().createDependencyProvider(descriptor, requestingBeanName);
+	}
+	else {
+		Object result = getAutowireCandidateResolver().getLazyResolutionProxyIfNecessary(
+				descriptor, requestingBeanName);
+		if (result == null) {
+			result = doResolveDependency(descriptor, requestingBeanName, autowiredBeanNames, typeConverter);
+		}
+		return result;
+	}
+}
+```
 
-  > DependencyObjectProvider是DefaultListableBeanFactory的内部类，且实现了ObjectProvider接口；是一个DependencyDescriptor的包装类：
-  
-  ```java
-  /**
-	 * Serializable ObjectFactory/ObjectProvider for lazy resolution of a dependency.
-	 */
-	private class DependencyObjectProvider implements BeanObjectProvider<Object> {
+> DependencyObjectProvider是DefaultListableBeanFactory的内部类，且实现了ObjectProvider接口；是一个DependencyDescriptor的包装类：
 
-		private final DependencyDescriptor descriptor;
+```java
+/**
+ * Serializable ObjectFactory/ObjectProvider for lazy resolution of a dependency.
+ */
+private class DependencyObjectProvider implements BeanObjectProvider<Object> {
 
-		private final boolean optional;
-    ...
-  }
-  ```
+	private final DependencyDescriptor descriptor;
+
+	private final boolean optional;
+  ...
+}
+```
 
 - 3、ResourceLoader类型的参数
 
@@ -344,7 +358,7 @@ beanName.equals("mybatisAutoConfiguration")
     - 如果上一步没有找到，继续调用DefaultListableBeanFactory#findAutowireCandidates查找
     - 如果还没有找到，且当前依赖不是必须的，则返回一个空，否则抛出异常。
     ```java
-
+    
     ```
 
 
@@ -362,14 +376,14 @@ beanName.equals("mybatisAutoConfiguration")
 
   Spring会创建很多内部依赖，比如internalConfigurationAnnotationProcessor。这些依赖可以看做底层组件，也即非业务相关的组件。
 
-    
+​    
 
 - 手动注册配置类——业务相关的配置类
 
   ```java
-
+  
   this.context.register(MybatisAutoConfiguration.class, PropertyPlaceholderAutoConfiguration.class);
-
+  
   ```
 
 
@@ -388,251 +402,304 @@ beanName.equals("mybatisAutoConfiguration")
 
     委派PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors进行处理
 
+> 现在我们手边有了内部依赖，还有了若干业务相关的配置类，这里就开始处理这些配置类。
+>
+> - 从上下文中查找类型为BeanDefinitionRegistryPostProcessor的Bean，正好在上下文创建的时候，创建了一个ConfigurationClassPostProcessor的Bean，它实现了BeanDefinitionRegistryPostProcessor接口。
+>
+>   - 首先处理实现了PriorityOrdered接口的BeanDefinitionRegistryPostProcessor。
+>
+>     ConfigurationClassPostProcessor也实现了PriorityOrdered接口。
+>
+>   - 然后处理实现了Ordered接口的BeanDefinitionRegistryPostProcessor。
+>
+>   - 最后处理剩余的BeanDefinitionRegistryPostProcessor。
+>
+>     处理都是调用PostProcessorRegistrationDelegate#invokeBeanDefinitionRegistryPostProcessors进行的。它调用BeanDefinitionRegistryPostProcessor#postProcessBeanDefinitionRegistry方法。
+>
+>     其中一个BeanDefinitionRegistryPostProcessor是ConfigurationClassPostProcessor，类如其名，主要内容是处理配置类的定义：
+>
+>     ```java
+>     	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+>     		int factoryId = System.identityHashCode(beanFactory);
+>     		if (this.factoriesPostProcessed.contains(factoryId)) {
+>     			throw new IllegalStateException(
+>     					"postProcessBeanFactory already called on this post-processor against " + beanFactory);
+>     		}
+>     		this.factoriesPostProcessed.add(factoryId);
+>     		if (!this.registriesPostProcessed.contains(factoryId)) {
+>     			// BeanDefinitionRegistryPostProcessor hook apparently not supported...
+>     			// Simply call processConfigurationClasses lazily at this point then.
+>     			processConfigBeanDefinitions((BeanDefinitionRegistry) beanFactory);
+>     		}
+>     
+>     		enhanceConfigurationClasses(beanFactory);
+>     		beanFactory.addBeanPostProcessor(new ImportAwareBeanPostProcessor(beanFactory));
+>     	}
+>     ```
+>
+>     
+>
+>     - 调用ConfigurationClassPostProcessor#processConfigBeanDefinitions
+>
+>       - 依次当前被处理的BeanDefinitionRegistry中的所有BeanDefinitionNames，然后找到对应的BeanDefinition，判断对应的BeanDefinition是不是配置类，原理就是寻找这个类是不是被注解@Configuration标注，如果是的话，取出这个注解上的相关值：
+>
+>         (**此段描述可能由于Spring版本的问题，找不到对饮的代码了**)如果Configuration#proxyBeanMethods 为true，将名为”org.springframework.context.annotation.ConfigurationClassPostProcessor.configurationClass“，值为BeanMetadataAttribute对象的属性设置到BeanDefinition上。BeanMetadataAttribute对象封装了同样的名字和值对象Object，它的值可能为"full"。
+>
+>         （**上一段<u>可能</u>应该修改为下面的描述**）对于是配置类的情况，在对应的BeanDefinition实例中增加值为静态字符串常量CONFIGURATION_CLASS_ATTRIBUTE，值为静态字符串常量CONFIGURATION_CLASS_FULL(@Configuration)或CONFIGURATION_CLASS_LITE(@Component、@ComponentScan、@Import、@ImportResource或者类中有被@Bean注解的方法)的属性。
+>
+>         
+>
+>       - 创建ConfigurationClassParser，解析所有找到的配置类，将BeanDefinitionHolder转换为ConfigurationClass。对于MybatisAutoConfiguration来说，直接使用其BeanDefinition包含的AnnotationMetadata和Bean的名字构造一个ConfigurationClass。
+>
+>       - 对于上面创建好的ConfigurationClass，使用ConfigurationClassBeanDefinitionReader#loadBeanDefinitions读取。
+>
+>         - 调用ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass
+>
+>           - 加载由@Import导入或配置类内嵌的配置类
+>           - 配置类中由@Bean注解定义的Bean
+>           - 调用loadBeanDefinitionsFromImportedResources导入使用@ImportResource导入的XML中定义的Bean（这几类是由ConfigurationClassParser#doProcessConfigurationClass扫描进来的）
+>           - 调用**loadBeanDefinitionsFromRegistrars**导入由ImportBeanDefinitionRegistrar导入的Bean（对应@EnableXXX注解）。
+>
+>           所有这些Bean定义BeanDefinition都会被放入`DefaultListableBeanFactory#beanDefinitionMap`属性中。还会把这个注册表中所有的Bean的名字放入`DefaultListableBeanFactory#beanDefinitionNames`中。
+>
+>           ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass的代码如下
+>
+>           ```java
+>           if (trackedConditionEvaluator.shouldSkip(configClass)) {
+>           	String beanName = configClass.getBeanName();
+>           	if (StringUtils.hasLength(beanName) && this.registry.containsBeanDefinition(beanName)) {
+>           		this.registry.removeBeanDefinition(beanName);
+>           	}
+>           	this.importRegistry.removeImportingClass(configClass.getMetadata().getClassName());
+>           	return;
+>           }
+>           
+>           if (configClass.isImported()) {
+>           	registerBeanDefinitionForImportedConfigurationClass(configClass);
+>           }
+>           for (BeanMethod beanMethod : configClass.getBeanMethods()) {
+>           	loadBeanDefinitionsForBeanMethod(beanMethod);
+>           }
+>           
+>           loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
+>           loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
+>           ```
+>
+>           1. 上述代码第一行ConfigurationClassBeanDefinitionReader.TrackedConditionEvaluator#shouldSkip会递归判断所有的@Conditional注解：
+>
+>              - 当前配置类
+>              - 当前配置类如果是内部类，则判断外部类
+>              - 如果当前配置类是被@Imported引入的，判断@Imported所在的配置类。
+>
+>              正好MybatisAutoConfiguration上有两个@Conditional注解
+>
+>              ```java
+>              @org.springframework.context.annotation.Configuration
+>              
+>              @ConditionalOnClass({ SqlSessionFactory.class, SqlSessionFactoryBean.class })
+>              
+>              @ConditionalOnSingleCandidate(DataSource.class)
+>              
+>              @EnableConfigurationProperties(MybatisProperties.class)
+>              
+>              @AutoConfigureAfter({ DataSourceAutoConfiguration.class, MybatisLanguageDriverAutoConfiguration.class })
+>              
+>              public class MybatisAutoConfiguration implements InitializingBean {
+>              
+>              }@org.springframework.context.annotation.Configuration
+>              
+>              ```
+>
+>              Spring会将@ConditionalOnClass和@ConditionalOnSingleCandidate注解定义中指明的类加载到当前JVM（它们都是被@Conditional”元注解“的注解，相当于是@Conditional的”子注解“）
+>
+>              ```java
+>              @Target({ ElementType.TYPE, ElementType.METHOD })
+>              
+>              @Retention(RetentionPolicy.RUNTIME)
+>              
+>              @Documented
+>              
+>              @Conditional(OnClassCondition.class)
+>              
+>              public @interface ConditionalOnClass {
+>              
+>              } 
+>              
+>              @Target({ ElementType.TYPE, ElementType.METHOD })
+>              
+>              @Retention(RetentionPolicy.RUNTIME)
+>              
+>              @Documented
+>              
+>              @Conditional(OnBeanCondition.class)
+>              
+>              public @interface ConditionalOnSingleCandidate { 
+>              
+>              }
+>              ```
+>
+>              根据上面的代码，对于MybatisAutoConfiguration来说，会加载并初始化OnClassCondition实例和OnBeanCondition实例。
+>
+>              - 对于OnBeanCondition和对应的@ConditionalOnSingleCandidate注解来说，Spring利用依赖查找在当前上下文中查找相应的Bean。如果找到了，则当前配置类应该被加载，否则不进行加载。
+>
+>              - 特别的，对于properties文件中若干配置项引起的自动装配很感兴趣。按照和上面一样的套路，找到@ConditionalOnProperty的定义
+>
+>                ```java
+>                @Retention(RetentionPolicy.RUNTIME)
+>                @Target({ ElementType.TYPE, ElementType.METHOD })
+>                @Documented
+>                @Conditional(OnPropertyCondition.class)
+>                public @interface ConditionalOnProperty {
+>                }
+>                ```
+>
+>                上面使用了@Conditional注解来引入OnPropertyCondition类，其原理就是先收集@ConditionalOnProperty注解的name或者value属性，然后利用上下文中的Environment（PropertyResolver的子接口）依赖查找所需的属性是否存在，如果存在则测试通过，否则不通过。
+>
+>           2. loadBeanDefinitionsFromRegistrars的原理——以@EnableConfigurationProperties为例.
+>
+>              调用相应@EnableXXX注解对应的类，比如@EnableConfigurationProperties对应的EnableConfigurationPropertiesRegistrar类的registerBeanDefinitions方法
+>
+>              ```java
+>              @Override
+>              public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
+>                registerInfrastructureBeans(registry);
+>                registerMethodValidationExcludeFilter(registry);
+>                ConfigurationPropertiesBeanRegistrar beanRegistrar = new ConfigurationPropertiesBeanRegistrarConfigurationPropertiesBeanRegistrar(registry);
+>                getTypes(metadata).forEach(beanRegistrar::register);
+>              }
+>              ```
+>
+>              （**Spring boot 2.2.2中还是对应的EnableConfigurationPropertiesRegistrar，后面的版本对应成了EnableConfigurationPropertiesImportSelector，上面以这个版本为基础进行叙述**）
+>
+>              - 其中EnableConfigurationPropertiesRegistrar#registerInfrastructureBeans会调用ConfigurationPropertiesBindingPostProcessor#register在上下文中注入工具Bean ConfigurationPropertiesBindingPostProcessor、ConfigurationPropertiesBinder.Factory、ConfigurationPropertiesBinder和BoundConfigurationProperties，它们都是InfrastructureBeans
+>
+>              ```java
+>              public static void register(BeanDefinitionRegistry registry) {
+>                Assert.notNull(registry, "Registry must not be null");
+>                if (!registry.containsBeanDefinition(BEAN_NAME)) {
+>                  BeanDefinition definition = BeanDefinitionBuilder
+>                      .genericBeanDefinition(ConfigurationPropertiesBindingPostProcessor.class,
+>                          ConfigurationPropertiesBindingPostProcessor::new)
+>                      .getBeanDefinition();
+>                  definition.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+>                  registry.registerBeanDefinition(BEAN_NAME, definition);
+>                }
+>                ConfigurationPropertiesBinder.register(registry);
+>              }
+>              ```
+>
+>              - registerMethodValidationExcludeFilter会注册InfrastructureBeans——MethodValidationExcludeFilter，顾名思义，是一个过滤器，过滤的条件是被注解@ConfigurationProperties标注。
+>
+>              ```java
+>              static void registerMethodValidationExcludeFilter(BeanDefinitionRegistry registry) {
+>                if (!registry.containsBeanDefinition(METHOD_VALIDATION_EXCLUDE_FILTER_BEAN_NAME)) {
+>                  BeanDefinition definition = BeanDefinitionBuilder
+>                      .genericBeanDefinition(MethodValidationExcludeFilter.class,
+>                          () -> MethodValidationExcludeFilter.byAnnotation(ConfigurationProperties.class))
+>                      .setRole(BeanDefinition.ROLE_INFRASTRUCTURE).getBeanDefinition();
+>                  registry.registerBeanDefinition(METHOD_VALIDATION_EXCLUDE_FILTER_BEAN_NAME, definition);
+>                }
+>              }
+>              ```
+>
+>              - 创建ConfigurationPropertiesBeanRegistrar，然后获取注解中的类名，比如`@EnableConfigurationProperties(MybatisProperties.class)`中的MybatisProperties，然后获取目标类比如MybatisProperties上的@ConfigurationProperties注解；然后注册类型MybatisProperties对应的BeanDefinition.
+>
+>     - 调用ConfigurationClassPostProcessor#enhanceConfigurationClasses。
+>
+>       主要依赖ConfigurationClassEnhancer#enhance。
+>
+>       - 调用ConfigurationClassEnhancer#newEnhancer创建Enhancer实例，并设置其回调为BeanMethodInterceptor和BeanFactoryAwareMethodInterceptor，它俩都实现了MethodInterceptor接口，应该分别是针对@Bean标记的方法调用和实现了BeanFactoryAware#setBeanFactory方法的setBeanFactory方法调用。
+>
+>         ```java
+>         //ConfigurationClassEnhancer#enhance
+>         Class<?> enhancedClass = createClass(newEnhancer(configClass, classLoader));
+>         //createClass的内容为
+>         private Class<?> createClass(Enhancer enhancer) {
+>         	Class<?> subclass = enhancer.createClass();
+>         	// Registering callbacks statically (as opposed to thread-local)
+>         	// is critical for usage in an OSGi environment (SPR-5932)...
+>         	Enhancer.registerStaticCallbacks(subclass, CALLBACKS);
+>         	return subclass;
+>         }
+>         //Enhancer.registerStaticCallbacks的第二个参数CALLBACKS的内容为
+>         // The callbacks to use. Note that these callbacks must be stateless.
+>         private static final Callback[] CALLBACKS = new Callback[] {
+>         		new BeanMethodInterceptor(),
+>         		new BeanFactoryAwareMethodInterceptor(),
+>         		NoOp.INSTANCE
+>         };
+>         
+>         ```
+>
+>         
+>
+>         - BeanFactoryAwareMethodInterceptor主要是拦截BeanFactoryAware#setBeanFactory，会将传入的BeanFactory参数的值赋值给代理产生的CBLib子类的名为$$beanFactory的字段。
+>
+>         - BeanMethodInterceptor的主要作用是调用 @Bean 方法的时候，先在BeanFactory里查一遍，有则返回，没有则创建新的，就像javadoc所说：
+>
+>           ```java
+>           /**
+>             * Enhance a {@link Bean @Bean} method to check the supplied BeanFactory for the
+>             * existence of this bean object.
+>             * @throws Throwable as a catch-all for any exception that may be thrown when invoking the
+>             * super implementation of the proxied method i.e., the actual {@code @Bean} method
+>             */
+>             @Override
+>             @Nullable
+>             public Object intercept(Object enhancedConfigInstance, Method beanMethod, Object[] beanMethodArgs,
+>                   MethodProxy cglibMethodProxy) throws Throwable {
+>             }
+>           ```
+>
+> - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors处理BeanFactoryPostProcessor类型的Bean
+>
+>   BeanDefinitionRegistryPostProcessor是BeanFactoryPostProcessor的子接口，所以PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors整体上的逻辑大概如下
+>
+>   ```java
+>   if (beanFactory instanceof BeanDefinitionRegistry) {
+>   	BeanDefinitionRegistry registry = (BeanDefinitionRegistry) beanFactory;
+>   	List<BeanFactoryPostProcessor> regularPostProcessors = new ArrayList<>();
+>   	List<BeanDefinitionRegistryPostProcessor> registryProcessors = new ArrayList<>();
+>   
+>       //将BeanFactoryPostProcessor按BeanDefinitionRegistryPostProcessor和
+>       //普通BeanFactoryPostProcessors分别保存
+>   	for (BeanFactoryPostProcessor postProcessor : beanFactoryPostProcessors) {
+>   		if (postProcessor instanceof BeanDefinitionRegistryPostProcessor) {
+>   			BeanDefinitionRegistryPostProcessor registryProcessor =
+>   					(BeanDefinitionRegistryPostProcessor) postProcessor;
+>   			registryProcessor.postProcessBeanDefinitionRegistry(registry);
+>   			registryProcessors.add(registryProcessor);
+>   		}
+>   		else {
+>   			regularPostProcessors.add(postProcessor);
+>   		}
+>   	}
+>   
+>   	...
+>   	// First, invoke the BeanDefinitionRegistryPostProcessors that implement PriorityOrdered.
+>       // Next, invoke the BeanDefinitionRegistryPostProcessors that implement Ordered.
+>       // Finally, invoke all other BeanDefinitionRegistryPostProcessors until no further ones appear.
+>       //上面三次都是做如下的调用
+>   	invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry);
+>   	
+>   	...
+>   	
+>   	// Now, invoke the postProcessBeanFactory callback of all processors handled so far.
+>   	invokeBeanFactoryPostProcessors(registryProcessors, beanFactory);
+>   	invokeBeanFactoryPostProcessors(regularPostProcessors, beanFactory);
+>   }
+>   
+>   else {
+>   	// Invoke factory processors registered with the context instance.
+>   	invokeBeanFactoryPostProcessors(beanFactoryPostProcessors, beanFactory);
+>   }
+>   ```
+>
+> - 配置类处理主要方法——ConfigurationClassParser#doProcessConfigurationClass
+
+- 配置类处理主要方法——ConfigurationClassParser#doProcessConfigurationClass
 
 
-    > 现在我们手边有了内部依赖，还有了若干业务相关的配置类，这里就开始处理这些配置类。
-
-
-
-    - 从上下文中查找类型为BeanDefinitionRegistryPostProcessor的Bean，正好在上下文创建的时候，创建了一个ConfigurationClassPostProcessor的Bean，它实现了BeanDefinitionRegistryPostProcessor接口。
-
-
-
-      - 首先处理实现了PriorityOrdered接口的BeanDefinitionRegistryPostProcessor。
-
-
-
-        ConfigurationClassPostProcessor也实现了PriorityOrdered接口。
-
-
-
-      - 然后处理实现了Ordered接口的BeanDefinitionRegistryPostProcessor。
-
-      - 最后处理剩余的BeanDefinitionRegistryPostProcessor。
-
-
-
-        处理都是调用PostProcessorRegistrationDelegate#invokeBeanDefinitionRegistryPostProcessors进行的。
-
-        它调用BeanDefinitionRegistryPostProcessor（比如这里的ConfigurationClassPostProcessor）的postProcessBeanDefinitionRegistry方法。ConfigurationClassPostProcessor类如其名，主要内容是处理配置类的定义：
-
-
-
-        >依次当前被处理的BeanDefinitionRegistry中的所有BeanDefinitionNames，然后找到对应的BeanDefinition，判断对应的BeanDefinition是不是配置类，原理就是寻找这个类是不是被注解@Configuration标注，如果是的话，取出这个注解上的相关值：
-        
-        >
-
-        >如果Configuration#proxyBeanMethods 为true，将名为”org.springframework.context.annotation.ConfigurationClassPostProcessor.configurationClass“，值为BeanMetadataAttribute对象的属性设置到BeanDefinition上。BeanMetadataAttribute对象封装了同样的名字和值对象Object，它的值可能为"full".
-
-        >
-
-        >创建ConfigurationClassParser，解析所有找到的配置类，将BeanDefinitionHolder转换为ConfigurationClass。对于MybatisAutoConfiguration来说，直接使用其BeanDefinition包含的AnnotationMetadata和Bean的名字构造一个ConfigurationClass。
-
-        >
-
-        >对于上面创建好的ConfigurationClass，使用ConfigurationClassBeanDefinitionReader#loadBeanDefinitions读取。在ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForConfigurationClass中有如下的逻辑：加载由@Import导入或配置类内嵌的配置类、配置类中由@Bean注解定义的Bean和使用@ImportResource导入的XML中定义的Bean（这几类是由ConfigurationClassParser#doProcessConfigurationClass扫描进来的）、由ImportBeanDefinitionRegistrar导入的Bean（对应@EnableXXX注解）。所有这些Bean定义BeanDefinition都会被放入`DefaultListableBeanFactory#beanDefinitionMap`属性中。还会把这个注册表中所有的Bean的名字放入`DefaultListableBeanFactory#beanDefinitionNames`中。
-
-        > loadBeanDefinitionsFromRegistrars的原理参考下面
-
-        ```java
-
-        if (configClass.isImported()) {
-
-			    registerBeanDefinitionForImportedConfigurationClass(configClass);
-
-		    }
-
-		    for (BeanMethod beanMethod : configClass.getBeanMethods()) {
-
-			    loadBeanDefinitionsForBeanMethod(beanMethod);
-
-		    }
-
-        
-
-		    loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
-
-		    loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
-
-        ```
-
-        >在上面的逻辑之前还有一个当前配置类是否应该加载的判断
-
-        ```java
-
-        if (trackedConditionEvaluator.shouldSkip(configClass)) {
-
-        }
-
-        ```
-
-        >ConfigurationClassBeanDefinitionReader.TrackedConditionEvaluator#shouldSkip会递归判断当前配置类、当前配置类如果是内部类，则判断外部类，如果当前配置类是被@Imported引入的，判断@Imported所在的配置类。正好MybatisAutoConfiguration上有两个@Conditional注解
-
-        ```java
-
-        @org.springframework.context.annotation.Configuration
-
-        @ConditionalOnClass({ SqlSessionFactory.class, SqlSessionFactoryBean.class })
-
-        @ConditionalOnSingleCandidate(DataSource.class)
-
-        @EnableConfigurationProperties(MybatisProperties.class)
-
-        @AutoConfigureAfter({ DataSourceAutoConfiguration.class, MybatisLanguageDriverAutoConfiguration.class })
-
-        public class MybatisAutoConfiguration implements InitializingBean {
-
-        }
-
-        ```
-
-        >Spring会将@ConditionalOnClass和@ConditionalOnSingleCandidate注解定义中指明的类加载到当前JVM（它们都是被@Conditional”元注解“的注解，相当于是@Conditional的”子注解“）
-
-        ```java
-
-        @Target({ ElementType.TYPE, ElementType.METHOD })
-
-        @Retention(RetentionPolicy.RUNTIME)
-
-        @Documented
-
-        @Conditional(OnClassCondition.class)
-
-        public @interface ConditionalOnClass {
-
-        }
-
-
-
-        @Target({ ElementType.TYPE, ElementType.METHOD })
-
-        @Retention(RetentionPolicy.RUNTIME)
-
-        @Documented
-
-        @Conditional(OnBeanCondition.class)
-
-        public @interface ConditionalOnSingleCandidate {
-
-        }
-
-        ```
-
-        >根据上面的代码，对于MybatisAutoConfiguration来说，会加载并初始化OnClassCondition实例和OnBeanCondition实例。
-
-        >对于OnBeanCondition和对应的@ConditionalOnSingleCandidate注解来说，Spring利用依赖查找在当前上下文中查找相应的Bean。如果找到了，则当前配置类应该被加载，否则不进行加载。
-
-        >特别的，对于properties文件中若干配置项引起的自动装配很感兴趣。按照和上面一样的套路，找到@ConditionalOnProperty的定义
-        ```java
-        @Retention(RetentionPolicy.RUNTIME)
-        @Target({ ElementType.TYPE, ElementType.METHOD })
-        @Documented
-        @Conditional(OnPropertyCondition.class)
-        public @interface ConditionalOnProperty {
-        }
-        ```
-        >关注OnPropertyCondition类。其原理就是先收集@ConditionalOnProperty注解的name或者value属性，然后利用上下文中的Environment（PropertyResolver的子接口）依赖查找所需的属性是否存在，如果存在则测试通过，否则不通过。
-
-        - loadBeanDefinitionsFromRegistrars的原理——以@EnableConfigurationProperties为例
-
-          调用相应@EnableXXX注解对应的类，比如@EnableConfigurationProperties对应的EnableConfigurationPropertiesRegistrar类的registerBeanDefinitions方法
-
-          ```java
-          @Override
-          public void registerBeanDefinitions(AnnotationMetadata metadata, BeanDefinitionRegistry registry) {
-            registerInfrastructureBeans(registry);
-            registerMethodValidationExcludeFilter(registry);
-            ConfigurationPropertiesBeanRegistrar beanRegistrar = new ConfigurationPropertiesBeanRegistrarConfigurationPropertiesBeanRegistrar(registry);
-            getTypes(metadata).forEach(beanRegistrar::register);
-          }
-          ```
-
-          其中EnableConfigurationPropertiesRegistrar#registerInfrastructureBeans会调用ConfigurationPropertiesBindingPostProcessor#register在上下文中注入工具Bean ConfigurationPropertiesBindingPostProcessor、ConfigurationPropertiesBinder.Factory、ConfigurationPropertiesBinder和BoundConfigurationProperties，即InfrastructureBeans
-          ```java
-          public static void register(BeanDefinitionRegistry registry) {
-            Assert.notNull(registry, "Registry must not be null");
-            if (!registry.containsBeanDefinition(BEAN_NAME)) {
-              BeanDefinition definition = BeanDefinitionBuilder
-                  .genericBeanDefinition(ConfigurationPropertiesBindingPostProcessor.class,
-                      ConfigurationPropertiesBindingPostProcessor::new)
-                  .getBeanDefinition();
-              definition.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
-              registry.registerBeanDefinition(BEAN_NAME, definition);
-            }
-            ConfigurationPropertiesBinder.register(registry);
-          }
-          ```
-
-          registerMethodValidationExcludeFilter会注册InfrastructureBeans——MethodValidationExcludeFilter，顾名思义，是一个过滤器，过滤的条件是被注解@ConfigurationProperties标注。
-          ```java
-          static void registerMethodValidationExcludeFilter(BeanDefinitionRegistry registry) {
-            if (!registry.containsBeanDefinition(METHOD_VALIDATION_EXCLUDE_FILTER_BEAN_NAME)) {
-              BeanDefinition definition = BeanDefinitionBuilder
-                  .genericBeanDefinition(MethodValidationExcludeFilter.class,
-                      () -> MethodValidationExcludeFilter.byAnnotation(ConfigurationProperties.class))
-                  .setRole(BeanDefinition.ROLE_INFRASTRUCTURE).getBeanDefinition();
-              registry.registerBeanDefinition(METHOD_VALIDATION_EXCLUDE_FILTER_BEAN_NAME, definition);
-            }
-          }
-          ```
-
-          创建ConfigurationPropertiesBeanRegistrar，然后获取注解中的类名，比如`@EnableConfigurationProperties(MybatisProperties.class)`中的MybatisProperties，然后获取目标类比如MybatisProperties上的@ConfigurationProperties注解；然后注册类型MybatisProperties对应的BeanDefinition.
-
-
-      - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors调起BeanDefinitionRegistryPostProcessor#postProcessBeanFactory（继承自BeanFactoryPostProcessor），即ConfigurationClassPostProcessor#postProcessBeanFactory
-
-        在这里对标注了@Configuration的配置类进行CGLib加强，然后向BeanFactory中增加了ImportAwareBeanPostProcessor这种BeanPostProcessor。这里主要关心前者。
-
-        调用ConfigurationClassPostProcessor#enhanceConfigurationClasses标注了@Configuration的配置类进行CGLib加强。
-
-        - 主要依赖ConfigurationClassEnhancer#enhance
-          - 调用ConfigurationClassEnhancer#newEnhancer创建Enhancer实例，并设置其回调为BeanMethodInterceptor和BeanFactoryAwareMethodInterceptor，它俩都实现了MethodInterceptor接口，应该分别是针对@Bean标记的方法调用和实现了BeanFactoryAware#setBeanFactory方法的setBeanFactory方法调用。
-            
-            BeanFactoryAwareMethodInterceptor主要是拦截BeanFactoryAware#setBeanFactory，会将传入的BeanFactory参数的值赋值给代理产生的CBLib子类的名为$$beanFactory的字段。
-
-            BeanMethodInterceptor的主要作用是调用 @Bean 方法的时候，现在BeanFactory里查一遍，有则返回，没有则创建新的，就像javadoc所说：
-            ```java
-            /**
-              * Enhance a {@link Bean @Bean} method to check the supplied BeanFactory for the
-              * existence of this bean object.
-              * @throws Throwable as a catch-all for any exception that may be thrown when invoking the
-              * super implementation of the proxied method i.e., the actual {@code @Bean} method
-              */
-              @Override
-              @Nullable
-              public Object intercept(Object enhancedConfigInstance, Method beanMethod, Object[] beanMethodArgs,
-                    MethodProxy cglibMethodProxy) throws Throwable {
-              }
-            ```
-
-            > 当配置类上有@Configuration注解时，执行依赖查找时@Bean方法，会返回同一个Bean实例；如果没有，则每次查找都会返回一个新的实例。
-
-
-      - 调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors处理BeanFactoryPostProcessor类型的Bean
-
-
-
-      > BeanDefinitionRegistryPostProcessor是BeanFactoryPostProcessor的子接口。
-
-
-
-    - 从上下文中查找类型为BeanFactoryPostProcessor的Bean。
-
-
-
-      - 首先处理实现了PriorityOrdered接口的BeanFactoryPostProcessor。
-
-      - 然后处理实现了Ordered接口的BeanFactoryPostProcessor。
-
-      - 最后处理剩余的BeanFactoryPostProcessor。
-
-
-
-      处理都是调用PostProcessorRegistrationDelegate#invokeBeanFactoryPostProcessors进行的。
-
-
-
-    - 配置类处理主要方法——ConfigurationClassParser#doProcessConfigurationClass
 
 
 ##### BeanDefinition的处理
@@ -701,7 +768,7 @@ beanName.equals("mybatisAutoConfiguration")
       >注意：DeferredImportSelectorHandler这个类中有一个延迟的含义("Deferred")，它的主要作用是来处理所有的DeferredImportSelector，相当于是DeferredImportSelector的“容器”
       ```java
       private class DeferredImportSelectorHandler {
-
+      
         @Nullable
         private List<DeferredImportSelectorHolder> deferredImportSelectors = new ArrayList<>();
       }
@@ -736,7 +803,7 @@ beanName.equals("mybatisAutoConfiguration")
           //处理所有的配置类Bean定义 
           ...
         }
-
+      
         //延迟处理DeferredImportSelector
         this.deferredImportSelectorHandler.process();
       }
@@ -809,7 +876,7 @@ beanName.equals("mybatisAutoConfiguration")
 	 */
 	private void loadBeanDefinitionsForConfigurationClass(
 			ConfigurationClass configClass, TrackedConditionEvaluator trackedConditionEvaluator) {
-
+  
 		if (trackedConditionEvaluator.shouldSkip(configClass)) {
 			String beanName = configClass.getBeanName();
 			if (StringUtils.hasLength(beanName) && this.registry.containsBeanDefinition(beanName)) {
@@ -818,14 +885,14 @@ beanName.equals("mybatisAutoConfiguration")
 			this.importRegistry.removeImportingClass(configClass.getMetadata().getClassName());
 			return;
 		}
-
+  
 		if (configClass.isImported()) {
 			registerBeanDefinitionForImportedConfigurationClass(configClass);
 		}
 		for (BeanMethod beanMethod : configClass.getBeanMethods()) {
 			loadBeanDefinitionsForBeanMethod(beanMethod);
 		}
-
+  
 		loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
 		loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
 	}
